@@ -1,0 +1,17 @@
+{
+  "name": "Hospital Management System",
+  "short_name": "HMS",
+  "description": "Hospital Management System — staff dashboard and patient portal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#111111",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

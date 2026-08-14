@@ -1,0 +1,46 @@
+{
+  "name": "hms-backend",
+  "version": "1.0.0",
+  "description": "Hospital Management System - Backend API",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node src/seed/seed.js",
+    "seed:fresh": "node src/seed/seed.js --fresh",
+    "seed:tenant": "node src/seed/seed.js --tenant",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "hms",
+    "hospital",
+    "express",
+    "mongodb"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "express-rate-limit": "^7.4.0",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.6.0",
+    "multer": "^1.4.5-lts.1",
+    "nodemailer": "^9.0.5",
+    "pdfkit": "^0.19.1",
+    "pino": "^10.3.1",
+    "pino-http": "^11.0.0",
+    "razorpay": "^2.9.8",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4",
+    "supertest": "^7.2.2",
+    "vitest": "^4.1.10"
+  }
+}

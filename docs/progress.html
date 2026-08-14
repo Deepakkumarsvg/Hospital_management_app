@@ -1,0 +1,482 @@
+<title>HMS Build Tracker</title>
+<style>
+  :root {
+    --bg: #f6f9fa;
+    --surface: #ffffff;
+    --surface-2: #eef3f5;
+    --border: #dde5e8;
+    --border-strong: #c8d4d8;
+    --fg: #10222a;
+    --muted: #5b727b;
+    --faint: #8ba0a8;
+    --accent: #0e8a86;
+    --done: #12a67a;
+    --done-bg: #e3f4ee;
+    --active: #c67d09;
+    --active-bg: #fbf0dc;
+    --todo: #8595a3;
+    --track: #e4ebee;
+    --shadow: 0 1px 2px rgba(16, 34, 42, .05), 0 8px 24px -12px rgba(16, 34, 42, .12);
+    --ring: rgba(14, 138, 134, .35);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1418;
+      --surface: #111e24;
+      --surface-2: #16262d;
+      --border: #24363d;
+      --border-strong: #2f454e;
+      --fg: #e7eff2;
+      --muted: #8fa6ae;
+      --faint: #63797f;
+      --accent: #3fb8b1;
+      --done: #2fc79a;
+      --done-bg: #123027;
+      --active: #e0a133;
+      --active-bg: #33260f;
+      --todo: #6d828c;
+      --track: #1d2f36;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+      --ring: rgba(63, 184, 177, .4);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f9fa; --surface: #ffffff; --surface-2: #eef3f5; --border: #dde5e8;
+    --border-strong: #c8d4d8; --fg: #10222a; --muted: #5b727b; --faint: #8ba0a8;
+    --accent: #0e8a86; --done: #12a67a; --done-bg: #e3f4ee; --active: #c67d09;
+    --active-bg: #fbf0dc; --todo: #8595a3; --track: #e4ebee; --ring: rgba(14,138,134,.35);
+    --shadow: 0 1px 2px rgba(16,34,42,.05), 0 8px 24px -12px rgba(16,34,42,.12);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1418; --surface: #111e24; --surface-2: #16262d; --border: #24363d;
+    --border-strong: #2f454e; --fg: #e7eff2; --muted: #8fa6ae; --faint: #63797f;
+    --accent: #3fb8b1; --done: #2fc79a; --done-bg: #123027; --active: #e0a133;
+    --active-bg: #33260f; --todo: #6d828c; --track: #1d2f36; --ring: rgba(63,184,177,.4);
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 10px 30px -14px rgba(0,0,0,.6);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono {
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 72px; }
+
+  /* ---- Sticky summary header ---- */
+  header {
+    position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  .head-inner {
+    max-width: 1120px; margin: 0 auto; padding: 18px 20px;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; margin-right: auto; }
+  .logo {
+    width: 40px; height: 40px; border-radius: 10px; flex: none;
+    display: grid; place-items: center;
+    background: var(--accent); color: #fff;
+    box-shadow: var(--shadow);
+  }
+  .logo svg { width: 22px; height: 22px; }
+  .brand h1 { font-size: 15px; margin: 0; letter-spacing: -.01em; }
+  .brand p {
+    margin: 1px 0 0; font-size: 11px; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .11em;
+  }
+
+  .ring-wrap { display: flex; align-items: center; gap: 14px; }
+  .ring {
+    --p: 0;
+    width: 62px; height: 62px; border-radius: 50%; flex: none;
+    background:
+      conic-gradient(var(--done) calc(var(--d) * 1%),
+        var(--active) calc(var(--d) * 1%) calc((var(--d) + var(--a)) * 1%),
+        var(--track) calc((var(--d) + var(--a)) * 1%));
+    display: grid; place-items: center;
+    transition: background .5s ease;
+  }
+  .ring::after {
+    content: ""; width: 46px; height: 46px; border-radius: 50%;
+    background: var(--surface); grid-area: 1/1;
+  }
+  .ring b {
+    grid-area: 1/1; z-index: 1; font-size: 14px; font-weight: 700;
+    letter-spacing: -.02em;
+  }
+  .tallies { display: flex; gap: 18px; }
+  .tally .n { font-size: 20px; font-weight: 700; letter-spacing: -.02em; line-height: 1; }
+  .tally .l {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .1em;
+    color: var(--muted); margin-top: 4px; display: flex; align-items: center; gap: 5px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  .dot.d { background: var(--done); }
+  .dot.a { background: var(--active); }
+  .dot.t { background: var(--todo); }
+
+  .actions { display: flex; gap: 8px; align-items: center; }
+  button.ctrl {
+    font: inherit; font-size: 12px; cursor: pointer;
+    background: var(--surface); color: var(--muted);
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 11px; display: inline-flex; align-items: center; gap: 6px;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  button.ctrl:hover { color: var(--fg); border-color: var(--border-strong); }
+  button.ctrl svg { width: 14px; height: 14px; }
+  button.ctrl:focus-visible, .row:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+
+  /* ---- Intro ---- */
+  .intro { margin: 32px 0 8px; }
+  .intro h2 { font-size: 22px; margin: 0 0 6px; letter-spacing: -.02em; text-wrap: balance; }
+  .intro p { margin: 0; color: var(--muted); font-size: 14px; max-width: 60ch; }
+  .hint {
+    margin-top: 14px; font-size: 12.5px; color: var(--muted);
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    padding: 7px 12px; border-radius: 8px;
+  }
+  .hint kbd {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 5px; padding: 1px 6px;
+  }
+
+  /* ---- Grid of phase cards ---- */
+  .grid {
+    margin-top: 26px; display: grid; gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; box-shadow: var(--shadow); overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .card.span { grid-column: 1 / -1; }
+  .card-head { padding: 16px 18px 14px; border-bottom: 1px solid var(--border); }
+  .card-top { display: flex; align-items: baseline; gap: 10px; }
+  .phase-tag {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .11em;
+    color: var(--accent); font-weight: 600;
+  }
+  .card-top h3 { font-size: 15px; margin: 0; letter-spacing: -.01em; margin-right: auto; }
+  .pct { font-size: 12px; color: var(--muted); font-weight: 600; }
+  .bar { height: 6px; border-radius: 6px; background: var(--track); margin-top: 12px; overflow: hidden; display: flex; }
+  .bar i { display: block; height: 100%; transition: width .5s ease; }
+  .bar i.d { background: var(--done); }
+  .bar i.a { background: var(--active); }
+
+  ul.items { list-style: none; margin: 0; padding: 6px; display: flex; flex-direction: column; }
+  .row {
+    display: flex; align-items: flex-start; gap: 11px;
+    padding: 8px 11px; border-radius: 9px; cursor: pointer;
+    text-align: left; width: 100%; background: none; border: 0; font: inherit; color: inherit;
+    transition: background .13s;
+  }
+  .row:hover { background: var(--surface-2); }
+  .box {
+    width: 18px; height: 18px; border-radius: 6px; flex: none; margin-top: 1px;
+    border: 1.5px solid var(--border-strong); display: grid; place-items: center;
+    transition: background .15s, border-color .15s;
+  }
+  .box svg { width: 12px; height: 12px; opacity: 0; transition: opacity .12s; color: #fff; }
+  .row .txt { flex: 1; min-width: 0; font-size: 13.5px; }
+  .row .st {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: .08em;
+    padding: 2px 7px; border-radius: 20px; font-weight: 600; flex: none; margin-top: 1px;
+  }
+
+  .row[data-s="done"] .box { background: var(--done); border-color: var(--done); }
+  .row[data-s="done"] .box svg { opacity: 1; }
+  .row[data-s="done"] .txt { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+  .row[data-s="done"] .st { background: var(--done-bg); color: var(--done); }
+
+  .row[data-s="active"] .box { border-color: var(--active); background: var(--active-bg); }
+  .row[data-s="active"] .box::after {
+    content: ""; width: 8px; height: 8px; border-radius: 2px; background: var(--active);
+  }
+  .row[data-s="active"] .st { background: var(--active-bg); color: var(--active); }
+
+  .row[data-s="todo"] .st { background: var(--surface-2); color: var(--todo); }
+
+  /* filter dimming */
+  body[data-filter="remaining"] .row[data-s="done"],
+  body[data-filter="done"] .row:not([data-s="done"]) { display: none; }
+
+  footer {
+    margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border);
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    font-size: 12px; color: var(--faint);
+  }
+  .seg { display: inline-flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+  .seg button {
+    font: inherit; font-size: 12px; cursor: pointer; border: 0; background: none;
+    color: var(--muted); padding: 5px 12px; border-radius: 6px; transition: all .13s;
+  }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: var(--shadow); }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<header>
+  <div class="head-inner">
+    <div class="brand">
+      <span class="logo" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 6v12M6 12h12"/></svg>
+      </span>
+      <div>
+        <h1>Hospital Management System</h1>
+        <p>Build Progress Tracker</p>
+      </div>
+    </div>
+
+    <div class="ring-wrap">
+      <div class="ring" id="ring" style="--d:0;--a:0"><b class="mono" id="ringPct">0%</b></div>
+      <div class="tallies">
+        <div class="tally"><div class="n mono" id="tDone">0</div><div class="l"><span class="dot d"></span>Done</div></div>
+        <div class="tally"><div class="n mono" id="tActive">0</div><div class="l"><span class="dot a"></span>Active</div></div>
+        <div class="tally"><div class="n mono" id="tTodo">0</div><div class="l"><span class="dot t"></span>Left</div></div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <div class="seg" role="group" aria-label="Filter items">
+        <button data-f="all" aria-pressed="true">All</button>
+        <button data-f="remaining" aria-pressed="false">Left</button>
+        <button data-f="done" aria-pressed="false">Done</button>
+      </div>
+      <button class="ctrl" id="theme" title="Toggle theme" aria-label="Toggle theme">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v1M12 20v1M4.2 4.2l.7.7M19.1 19.1l.7.7M3 12h1M20 12h1M4.9 19.1l-.7.7M19.8 4.2l-.7.7"/><circle cx="12" cy="12" r="4"/></svg>
+      </button>
+      <button class="ctrl" id="reset" title="Reset to defaults">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+        Reset
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="intro">
+    <h2>Where the build stands</h2>
+    <p>Phase 1 (Foundation) is complete and tested. Everything from Phase 2 onward is scaffolded in the app's navigation and waiting to be built — module by module, following the spec's development order.</p>
+    <div class="hint">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+      Click any item to cycle it: <kbd>Left</kbd> → <kbd>Active</kbd> → <kbd>Done</kbd>. Your changes save automatically in this browser.
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <footer>
+    <span id="stamp" class="mono">—</span>
+    <span>MERN · MongoDB · Express · React · Node — black &amp; white, light/dark, responsive</span>
+  </footer>
+</div>
+
+<script>
+  const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12l5 5L20 6"/></svg>';
+  const NEXT = { todo: 'active', active: 'done', done: 'todo' };
+  const LABEL = { todo: 'Left', active: 'Active', done: 'Done' };
+  const KEY = 'hms-progress-v1';
+
+  const PHASES = [
+    { tag: 'Phase 1', title: 'Foundation', span: true, items: [
+      ['f1','Express + layered architecture','done'],
+      ['f2','MongoDB + Mongoose connection','done'],
+      ['f3','User / Role / Department models','done'],
+      ['f4','JWT auth — login / logout / me','done'],
+      ['f5','Password hashing (bcrypt)','done'],
+      ['f6','RBAC middleware — 12 roles','done'],
+      ['f7','Centralized error handling','done'],
+      ['f8','Standard API response format','done'],
+      ['f9','Zod validation layer','done'],
+      ['f10','Security — Helmet, CORS, rate-limit','done'],
+      ['f11','Seed script — roles + admin','done'],
+      ['f12','Server-side pagination + search','done'],
+      ['f13','React + Vite + Tailwind setup','done'],
+      ['f14','Black & white design system','done'],
+      ['f15','Light / dark theme toggle','done'],
+      ['f16','Responsive layout + mobile drawer','done'],
+      ['f17','Reusable UI — Button, Input, Card…','done'],
+      ['f18','AuthContext + ProtectedRoute','done'],
+      ['f19','Axios API layer (token, auto-logout)','done'],
+      ['f20','Role-based sidebar','done'],
+      ['f21','Login page','done'],
+      ['f22','Dashboard shell + Recharts','done'],
+      ['f23','Docs — README, SETUP, API, DB','done'],
+    ]},
+    { tag: 'Phase 2', title: 'Core', items: [
+      ['c4','Patients — CRUD + auto UHID + search','done'],
+      ['c9','Patient detail page + edit/delete','done'],
+      ['c10','Reusable UI kit (Modal, Toast, Table…)','done'],
+      ['c3','Departments — CRUD','done'],
+      ['c6','Doctors — profile, availability, fee','done'],
+      ['c7','Appointments — booking + statuses','done'],
+      ['c8','Appointment check-in / reschedule / cancel','done'],
+      ['c1','Users — full CRUD + management UI','done'],
+      ['c2','Roles — page + access matrix','done'],
+      ['c5','Patient documents upload','done'],
+      ['c11','Doctor dashboard (role-aware)','done'],
+    ]},
+    { tag: 'Phase 3', title: 'Clinical', items: [
+      ['cl1','OPD visit — vitals, symptoms, diagnosis','done'],
+      ['cl2','Clinical notes','done'],
+      ['cl3','Prescriptions (embedded in visit)','done'],
+      ['cl4','IPD — admission + discharge','done'],
+      ['cl5','Doctor assignment + nursing notes','done'],
+      ['cl6','Wards / Rooms / Beds CRUD','done'],
+      ['cl7','Visual bed map + bed transfer','done'],
+      ['cl8','Medical Records — patient clinical history','done'],
+    ]},
+    { tag: 'Phase 4', title: 'Diagnostics', items: [
+      ['d1','Lab — test master + categories','done'],
+      ['d2','Lab orders → sample → result → verify','done'],
+      ['d3','Radiology — orders + reports','done'],
+      ['d4','Reports module + date filters','done'],
+      ['d5','CSV export + print (server PDF later)','done'],
+      ['d6','Patient Lab Reports tab wired','done'],
+    ]},
+    { tag: 'Phase 5', title: 'Pharmacy & Inventory', items: [
+      ['p1','Medicine master + batch / expiry','done'],
+      ['p2','Dispense (FEFO) + low-stock alerts','done'],
+      ['p3','Inventory item master','done'],
+      ['p4','Vendors + purchase orders (receive)','done'],
+      ['p5','Stock transactions (audit trail)','done'],
+    ]},
+    { tag: 'Phase 6', title: 'Finance', items: [
+      ['b1','Billing — invoice + items + suggestions','done'],
+      ['b2','Discount / tax / payment status','done'],
+      ['b3','Payments — cash / card / UPI / insurance','done'],
+      ['b4','Insurance / TPA — claims + settle→payment','done'],
+      ['b5','Patient billing tab wired','done'],
+    ]},
+    { tag: 'Phase 7', title: 'Advanced', items: [
+      ['a1','Operation Theatre (OT) + surgery workflow','done'],
+      ['a3','Blood Bank (donors, stock, issue)','done'],
+      ['a4','Ambulance (fleet + trips)','done'],
+      ['a5','HR (employees, attendance, leave)','done'],
+      ['a6','Notifications (in-app bell + triggers)','done'],
+      ['a7','Audit Logs (viewer + auto-capture)','done'],
+      ['a2','ICU (via ICU ward-type + IPD)','done'],
+    ]},
+    { tag: 'Cross-cutting', title: 'Platform', items: [
+      ['x1','File upload layer (local → S3-ready)','done'],
+      ['x4','Wire dashboard KPIs to real API','done'],
+      ['x2','PDF generation service','todo'],
+      ['x3','Automated tests (Vitest / Jest)','todo'],
+    ]},
+  ];
+
+  // ---- state ----
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch (e) {}
+  const state = {};
+  PHASES.forEach(p => p.items.forEach(([id,, def]) => { state[id] = saved[id] || def; }));
+
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} stamp(); }
+  function stamp() {
+    const d = new Date();
+    document.getElementById('stamp').textContent =
+      'Updated ' + d.toLocaleDateString(undefined,{day:'2-digit',month:'short',year:'numeric'}) +
+      ' · ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
+  }
+
+  // ---- render ----
+  const grid = document.getElementById('grid');
+  PHASES.forEach(p => {
+    const card = document.createElement('div');
+    card.className = 'card' + (p.span ? ' span' : '');
+    card.innerHTML =
+      '<div class="card-head"><div class="card-top">' +
+        '<span class="phase-tag">'+p.tag+'</span>' +
+        '<h3>'+p.title+'</h3>' +
+        '<span class="pct mono" data-pct></span>' +
+      '</div><div class="bar"><i class="d" data-d></i><i class="a" data-a></i></div></div>' +
+      '<ul class="items"></ul>';
+    const ul = card.querySelector('ul');
+    p.items.forEach(([id, label]) => {
+      const row = document.createElement('button');
+      row.className = 'row';
+      row.dataset.id = id;
+      row.dataset.s = state[id];
+      row.innerHTML =
+        '<span class="box">'+CHECK+'</span>' +
+        '<span class="txt">'+label+'</span>' +
+        '<span class="st"></span>';
+      row.querySelector('.st').textContent = LABEL[state[id]];
+      row.addEventListener('click', () => {
+        const ns = NEXT[state[id]];
+        state[id] = ns; row.dataset.s = ns;
+        row.querySelector('.st').textContent = LABEL[ns];
+        save(); refresh();
+      });
+      ul.appendChild(row);
+    });
+    p._el = card; p._pct = card.querySelector('[data-pct]');
+    p._d = card.querySelector('[data-d]'); p._a = card.querySelector('[data-a]');
+    grid.appendChild(card);
+  });
+
+  function refresh() {
+    let D = 0, A = 0, T = 0, N = 0;
+    PHASES.forEach(p => {
+      let d = 0, a = 0;
+      p.items.forEach(([id]) => { const s = state[id]; if (s==='done') d++; else if (s==='active') a++; });
+      const n = p.items.length;
+      const dp = d/n*100, ap = a/n*100;
+      p._d.style.width = dp+'%'; p._a.style.width = ap+'%';
+      p._pct.textContent = Math.round((d + a*0.5)/n*100) + '%';
+      D += d; A += a; T += (n - d - a); N += n;
+    });
+    document.getElementById('tDone').textContent = D;
+    document.getElementById('tActive').textContent = A;
+    document.getElementById('tTodo').textContent = T;
+    const dPct = D/N*100, aPct = A/N*100;
+    const ring = document.getElementById('ring');
+    ring.style.setProperty('--d', dPct); ring.style.setProperty('--a', aPct);
+    document.getElementById('ringPct').textContent = Math.round((D + A*0.5)/N*100) + '%';
+  }
+
+  // ---- filters ----
+  document.querySelectorAll('.seg button').forEach(b => {
+    b.addEventListener('click', () => {
+      document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-pressed', x===b));
+      document.body.dataset.filter = b.dataset.f;
+    });
+  });
+  document.body.dataset.filter = 'all';
+
+  // ---- theme ----
+  document.getElementById('theme').addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme')
+      || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', cur === 'dark' ? 'light' : 'dark');
+  });
+
+  // ---- reset ----
+  document.getElementById('reset').addEventListener('click', () => {
+    if (!confirm('Reset all items to their default status?')) return;
+    PHASES.forEach(p => p.items.forEach(([id,, def]) => {
+      state[id] = def;
+      const row = document.querySelector('.row[data-id="'+id+'"]');
+      row.dataset.s = def; row.querySelector('.st').textContent = LABEL[def];
+    }));
+    save(); refresh();
+  });
+
+  refresh(); stamp();
+</script>
