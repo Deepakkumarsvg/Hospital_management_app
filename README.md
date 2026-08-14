@@ -217,3 +217,4 @@ that reuses the existing DB — **no migration needed**.
 - **How it works:** `useDb()` (one pool, many DBs) + AsyncLocalStorage tenant context + model Proxies. See the **[Multi-Tenancy Blueprint](./docs/MULTITENANCY_BLUEPRINT.md)**.
 
 See [docs/](./docs) for details.
+# Hospital_management_app
