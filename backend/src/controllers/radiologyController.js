@@ -50,5 +50,5 @@ export const orderPdf = asyncHandler(async (req, res) => {
     service.getOrder(req.params.id),
     getSettings(),
   ]);
-  generateRadiologyReportPdf(res, { order, settings });
+  await generateRadiologyReportPdf(res, { order, settings });
 });

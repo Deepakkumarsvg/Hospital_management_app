@@ -1,0 +1,71 @@
+# Render blueprint for the HMS API.
+#
+# Render → New → Blueprint → point at this repo. Everything below is created
+# automatically; the four values marked `sync: false` are prompted for on
+# first deploy and never stored in the repo.
+#
+# The frontend is NOT here — it deploys to Vercel (see frontend/vercel.json).
+services:
+  - type: web
+    name: hms-api
+    runtime: node
+    plan: free
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: npm start
+
+    # Render restarts the service if this stops returning 2xx. The endpoint
+    # pings MongoDB rather than just confirming the process is alive, so a
+    # dead database is actually reported as unhealthy.
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # Render terminates TLS at its own proxy, so the client's address
+      # arrives in X-Forwarded-For. Without this, per-IP rate limits would
+      # collapse into one shared budget and audit logs would record the proxy.
+      - key: TRUST_PROXY
+        value: "1"
+
+      # Render's filesystem is ephemeral on every plan without a mounted disk:
+      # anything written locally is gone on the next deploy. Patient documents
+      # must therefore go to object storage.
+      - key: STORAGE_DRIVER
+        value: s3
+
+      # --- Prompted on first deploy ---
+
+      # Atlas connection string. Atlas → Network Access must allow 0.0.0.0/0,
+      # because Render's outbound IP is not fixed on the free plan.
+      - key: MONGODB_URI
+        sync: false
+
+      # Must be 32+ characters in production or the server refuses to boot.
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+      - key: JWT_SECRET
+        sync: false
+
+      # The Vercel origin, e.g. https://hms.vercel.app — no trailing slash.
+      # A wildcard is rejected in production.
+      - key: CLIENT_URL
+        sync: false
+
+      # S3-compatible bucket. For Cloudflare R2 also set S3_ENDPOINT to
+      # https://<account-id>.r2.cloudflarestorage.com and S3_REGION to "auto".
+      - key: S3_BUCKET
+        sync: false
+      - key: S3_ACCESS_KEY_ID
+        sync: false
+      - key: S3_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_REGION
+        value: auto
+      - key: S3_ENDPOINT
+        sync: false
+      - key: S3_FORCE_PATH_STYLE
+        value: "true"
+
+      - key: JWT_EXPIRES_IN
+        value: 1d

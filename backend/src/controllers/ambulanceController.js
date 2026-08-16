@@ -36,7 +36,7 @@ export const exportTrips = asyncHandler(async (req, res) => {
 // GET /api/ambulance/trips/:id/pdf
 export const tripReceiptPdf = asyncHandler(async (req, res) => {
   const [trip, settings] = await Promise.all([service.getTrip(req.params.id), getSettings()]);
-  generateAmbulanceReceiptPdf(res, { trip, settings });
+  await generateAmbulanceReceiptPdf(res, { trip, settings });
 });
 
 // Inline validators (small module).

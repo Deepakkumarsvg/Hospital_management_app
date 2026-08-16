@@ -1,0 +1,48 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": "vite",
+
+  "rewrites": [
+    {
+      "comment": "Proxy the API through this origin instead of calling Render directly. The client uses a relative /api base URL, so this keeps requests same-origin: no CORS preflight, no third-party-cookie problems, and the backend URL never ships to the browser. Replace the host with your own Render service before deploying.",
+      "source": "/api/:path*",
+      "destination": "https://hms-api.onrender.com/api/:path*"
+    },
+    {
+      "comment": "SPA fallback — React Router owns every other path. Without this, a hard refresh on /patients/123 is a 404 from Vercel.",
+      "source": "/((?!assets/|favicon|manifest|sw\\.js).*)",
+      "destination": "/index.html"
+    }
+  ],
+
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "comment": "The service worker must never be cached, or users are pinned to a stale app shell after a deploy.",
+      "source": "/sw.js",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Strict-Transport-Security", "value": "max-age=31536000; includeSubDomains" },
+        { "key": "Permissions-Policy", "value": "camera=(self), microphone=(self), geolocation=()" }
+      ]
+    }
+  ]
+}

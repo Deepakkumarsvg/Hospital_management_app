@@ -1,9 +1,8 @@
-import path from 'path';
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
 import { PatientDocument, DOCUMENT_CATEGORIES } from '../models/PatientDocument.js';
 import { Patient } from '../models/Patient.js';
-import { removeFile } from '../config/storage.js';
+import { removeObject } from '../config/storage.js';
 import { serveStoredFile } from '../utils/serveFile.js';
 
 // GET /api/patients/:id/documents
@@ -18,7 +17,9 @@ export const listDocuments = asyncHandler(async (req, res) => {
 export const uploadDocument = asyncHandler(async (req, res) => {
   const patient = await Patient.findById(req.params.id).select('_id');
   if (!patient) {
-    removeFile(path.join('patients', req.params.id, req.file.filename));
+    // The bytes are already stored by the time this runs — don't leave them
+    // orphaned with no record pointing at them.
+    await removeObject(req.file.storageKey);
     throw ApiError.notFound('Patient not found', 'PATIENT_NOT_FOUND');
   }
 
@@ -28,7 +29,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     patient: patient._id,
     category,
     originalName: req.file.originalname,
-    storageKey: path.join('patients', req.params.id, req.file.filename),
+    storageKey: req.file.storageKey,
     mimeType: req.file.mimetype,
     size: req.file.size,
     uploadedBy: req.user?._id,
@@ -44,13 +45,13 @@ export const downloadDocument = asyncHandler(async (req, res) => {
 
   // inline=true lets the frontend open PDFs/images in a new tab instead of
   // forcing a save-to-disk prompt.
-  serveStoredFile(res, doc, { inline: req.query.inline === 'true' });
+  await serveStoredFile(res, doc, { inline: req.query.inline === 'true' });
 });
 
 // DELETE /api/patients/:id/documents/:docId
 export const deleteDocument = asyncHandler(async (req, res) => {
   const doc = await PatientDocument.findOneAndDelete({ _id: req.params.docId, patient: req.params.id });
   if (!doc) throw ApiError.notFound('Document not found', 'DOCUMENT_NOT_FOUND');
-  removeFile(doc.storageKey);
+  await removeObject(doc.storageKey);
   sendSuccess(res, { message: 'Document deleted', data: null });
 });

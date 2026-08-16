@@ -1,7 +1,6 @@
-import path from 'path';
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/insuranceService.js';
-import { removeFile } from '../config/storage.js';
+import { removeObject } from '../config/storage.js';
 import { serveStoredFile } from '../utils/serveFile.js';
 
 export const list = asyncHandler(async (req, res) => {
@@ -28,14 +27,15 @@ export const uploadClaimDocument = asyncHandler(async (req, res) => {
     const doc = await service.createClaimDocument(req.params.id, req.file, req.body.category, req.user?._id);
     sendSuccess(res, { statusCode: 201, message: 'Document uploaded', data: doc });
   } catch (err) {
-    removeFile(path.join('claims', req.params.id, req.file.filename));
+    // The bytes are already stored — don't leave them orphaned.
+    await removeObject(req.file.storageKey);
     throw err;
   }
 });
 
 export const downloadClaimDocument = asyncHandler(async (req, res) => {
   const doc = await service.getClaimDocument(req.params.id, req.params.docId);
-  serveStoredFile(res, doc, { inline: req.query.inline === 'true' });
+  await serveStoredFile(res, doc, { inline: req.query.inline === 'true' });
 });
 
 export const deleteClaimDocument = asyncHandler(async (req, res) => {

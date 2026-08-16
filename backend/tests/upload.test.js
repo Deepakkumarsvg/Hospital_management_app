@@ -4,12 +4,11 @@
 // client's Content-Type claim, so an HTML page can be uploaded as "image/png"
 // and, if that label is echoed back on download, rendered on our own origin
 // with the viewing clinician's session.
-import fs from 'fs';
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import request from 'supertest';
 import { app, connectTestDb, disconnectTestDb, inTenant, seedBase, login, auth } from './helpers.js';
 import { sniffMimeType } from '../src/utils/fileType.js';
-import { resolvePath } from '../src/config/storage.js';
+import { removeObject } from '../src/config/storage.js';
 
 const { Patient } = await import('../src/models/Patient.js');
 const { PatientDocument } = await import('../src/models/PatientDocument.js');
@@ -24,13 +23,12 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   await disconnectTestDb();
-  // These tests write real files; don't leave them in the working tree.
-  for (const dir of uploadedDirs) {
-    await fs.promises.rm(resolvePath(dir), { recursive: true, force: true }).catch(() => {});
-  }
+  // These tests store real files; clean them up through the same driver that
+  // wrote them, so this works on local disk and on S3 alike.
+  for (const key of storedKeys) await removeObject(key).catch(() => {});
 });
 
-const uploadedDirs = new Set();
+const storedKeys = new Set();
 
 beforeEach(async () => {
   await inTenant(async () => {
@@ -39,7 +37,6 @@ beforeEach(async () => {
       firstName: 'Asha', lastName: 'Rao', gender: 'FEMALE', dateOfBirth: '1990-01-01', phone: '9000000030',
     });
     patientId = p._id.toString();
-    uploadedDirs.add(`patients/${patientId}`);
   });
 });
 
@@ -47,11 +44,14 @@ beforeEach(async () => {
 const REAL_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
 const REAL_PDF = Buffer.from('%PDF-1.7\n1 0 obj\n');
 
-const upload = (buffer, filename, contentType) =>
-  request(app)
+async function upload(buffer, filename, contentType) {
+  const res = await request(app)
     .post(`/api/patients/${patientId}/documents`)
     .set(auth(token))
     .attach('file', buffer, { filename, contentType });
+  if (res.body?.data?.storageKey) storedKeys.add(res.body.data.storageKey);
+  return res;
+}
 
 describe('sniffMimeType', () => {
   it('identifies the formats we accept from their bytes', () => {
@@ -92,10 +92,17 @@ describe('patient document upload', () => {
     });
   });
 
-  it('rejects a file whose declared type is not allowed at all', async () => {
+  it('rejects a file that is neither a PDF nor an image', async () => {
     const res = await upload(Buffer.from('MZ\x90\x00'), 'setup.exe', 'application/x-msdownload');
     expect(res.status).toBe(400);
-    expect(res.body.error).toBe('INVALID_FILE_TYPE');
+    expect(res.body.error).toBe('FILE_CONTENT_MISMATCH');
+  });
+
+  it('does not store anything for a rejected upload', async () => {
+    await upload(Buffer.from('not a real image at all'), 'x.png', 'image/png');
+    await inTenant(async () => {
+      expect(await PatientDocument.countDocuments({})).toBe(0);
+    });
   });
 
   it('stores the sniffed type, not the declared one', async () => {

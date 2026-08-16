@@ -113,5 +113,5 @@ export const purchaseOrderPdf = asyncHandler(async (req, res) => {
     service.getPurchaseOrder(req.params.id),
     getSettings(),
   ]);
-  generatePurchaseOrderPdf(res, { po, settings });
+  await generatePurchaseOrderPdf(res, { po, settings });
 });

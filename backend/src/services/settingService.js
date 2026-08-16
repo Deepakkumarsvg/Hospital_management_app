@@ -1,6 +1,5 @@
-import path from 'path';
 import { Setting } from '../models/Setting.js';
-import { removeFile } from '../config/storage.js';
+import { removeObject } from '../config/storage.js';
 
 // Fields a client is allowed to update (everything except key/system fields).
 const EDITABLE = [
@@ -43,12 +42,11 @@ export async function updateSettings(data, userId) {
 
 export async function setLogo(file, userId) {
   const existing = await getSettings();
-  if (existing.logo?.storageKey) removeFile(existing.logo.storageKey);
+  if (existing.logo?.storageKey) await removeObject(existing.logo.storageKey);
 
-  const storageKey = path.join('branding', file.filename);
   const doc = await Setting.findOneAndUpdate(
     { key: 'hospital' },
-    { $set: { logo: { storageKey, mimeType: file.mimetype, originalName: file.originalname }, updatedBy: userId || null } },
+    { $set: { logo: { storageKey: file.storageKey, mimeType: file.mimetype, originalName: file.originalname }, updatedBy: userId || null } },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
   return doc;
@@ -56,7 +54,7 @@ export async function setLogo(file, userId) {
 
 export async function removeLogo(userId) {
   const existing = await getSettings();
-  if (existing.logo?.storageKey) removeFile(existing.logo.storageKey);
+  if (existing.logo?.storageKey) await removeObject(existing.logo.storageKey);
   const doc = await Setting.findOneAndUpdate(
     { key: 'hospital' },
     { $set: { logo: { storageKey: '', mimeType: '', originalName: '' }, updatedBy: userId || null } },

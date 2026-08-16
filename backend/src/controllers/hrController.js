@@ -108,5 +108,5 @@ export const exportPayslips = asyncHandler(async (req, res) => {
 // GET /api/hr/payslips/:id/pdf
 export const payslipPdf = asyncHandler(async (req, res) => {
   const [payslip, settings] = await Promise.all([service.getPayslip(req.params.id), getSettings()]);
-  generatePayslipPdf(res, { payslip, settings });
+  await generatePayslipPdf(res, { payslip, settings });
 });

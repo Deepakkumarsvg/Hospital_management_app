@@ -76,5 +76,5 @@ export const dispenseReceiptPdf = asyncHandler(async (req, res) => {
     service.getDispense(req.params.id),
     getSettings(),
   ]);
-  generateDispenseReceiptPdf(res, { dispense, settings });
+  await generateDispenseReceiptPdf(res, { dispense, settings });
 });

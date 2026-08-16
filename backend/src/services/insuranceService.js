@@ -5,7 +5,7 @@ import { Invoice } from '../models/Invoice.js';
 import { Payment } from '../models/Payment.js';
 import { Patient } from '../models/Patient.js';
 import { ApiError } from '../utils/ApiError.js';
-import { removeFile } from '../config/storage.js';
+import { removeObject } from '../config/storage.js';
 
 const POPULATE = [
   { path: 'patient', select: 'uhid firstName lastName' },
@@ -116,7 +116,7 @@ export async function createClaimDocument(claimId, file, category, userId) {
     claim: claimId,
     category: cat,
     originalName: file.originalname,
-    storageKey: path.join('claims', claimId, file.filename),
+    storageKey: file.storageKey,
     mimeType: file.mimetype,
     size: file.size,
     uploadedBy: userId,
@@ -132,7 +132,7 @@ export async function getClaimDocument(claimId, docId) {
 export async function deleteClaimDocument(claimId, docId) {
   const doc = await ClaimDocument.findOneAndDelete({ _id: docId, claim: claimId });
   if (!doc) throw ApiError.notFound('Document not found', 'DOCUMENT_NOT_FOUND');
-  removeFile(doc.storageKey);
+  await removeObject(doc.storageKey);
   return doc;
 }
 

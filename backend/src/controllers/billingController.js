@@ -19,7 +19,7 @@ export const pdf = asyncHandler(async (req, res) => {
     service.getInvoice(req.params.id),
     getSettings(),
   ]);
-  generateInvoicePdf(res, { invoice, payments, settings });
+  await generateInvoicePdf(res, { invoice, payments, settings });
 });
 export const suggestions = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: 'Suggestions', data: await service.billingSuggestions(req.params.patientId) }));

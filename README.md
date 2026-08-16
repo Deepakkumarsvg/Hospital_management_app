@@ -98,7 +98,13 @@ npm run dev               # http://localhost:5173
 
 Vite proxies `/api` → `http://localhost:5000`, so no CORS setup is needed in dev.
 
-### 3. One-command deploy (Docker)
+### 3. Deploy to the cloud (Vercel + Render + Atlas)
+Frontend on Vercel, API on Render, MongoDB on Atlas, uploads in an
+S3-compatible bucket. Blueprints are in the repo (`render.yaml`,
+`frontend/vercel.json`) — full walkthrough, including the free-tier caveats:
+**[Deployment guide](./docs/DEPLOYMENT.md)**.
+
+### 4. One-command deploy (Docker)
 ```bash
 cp .env.docker.example .env         # set a strong JWT_SECRET
 docker compose up -d --build        # mongo + API + nginx-served frontend
@@ -106,7 +112,7 @@ docker compose exec backend npm run seed:fresh
 # open http://localhost:8080
 ```
 
-### 4. Login
+### 5. Login
 Open http://localhost:5173 and sign in:
 
 | Email             | Password    | Role        | Lands on   |

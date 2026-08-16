@@ -30,7 +30,7 @@ export const summaryPdf = asyncHandler(async (req, res) => {
     service.getSummary({ from: req.query.from, to: req.query.to }),
     getSettings(),
   ]);
-  generateReportSummaryPdf(res, { summary, settings });
+  await generateReportSummaryPdf(res, { summary, settings });
 });
 
 // GET /api/reports/export/invoices?format=csv|xlsx&from=&to=

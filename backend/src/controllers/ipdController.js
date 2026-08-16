@@ -28,7 +28,7 @@ export const dischargePdf = asyncHandler(async (req, res) => {
     service.getAdmission(req.params.id),
     getSettings(),
   ]);
-  generateDischargeSummaryPdf(res, { admission, settings });
+  await generateDischargeSummaryPdf(res, { admission, settings });
 });
 
 export const admit = asyncHandler(async (req, res) => {

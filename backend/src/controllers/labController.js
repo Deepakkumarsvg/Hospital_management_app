@@ -64,5 +64,5 @@ export const orderPdf = asyncHandler(async (req, res) => {
     service.getOrder(req.params.id),
     getSettings(),
   ]);
-  generateLabReportPdf(res, { order, settings });
+  await generateLabReportPdf(res, { order, settings });
 });

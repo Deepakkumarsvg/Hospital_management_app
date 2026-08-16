@@ -68,7 +68,7 @@ export const invoicePdf = asyncHandler(async (req, res) => {
     service.ownedInvoice(req.patientId, req.params.id),
     getSettings(),
   ]);
-  generateInvoicePdf(res, { invoice, payments: [], settings });
+  await generateInvoicePdf(res, { invoice, payments: [], settings });
 });
 
 export const prescriptionPdf = asyncHandler(async (req, res) => {
@@ -76,7 +76,7 @@ export const prescriptionPdf = asyncHandler(async (req, res) => {
     service.ownedVisit(req.patientId, req.params.id),
     getSettings(),
   ]);
-  generatePrescriptionPdf(res, { visit, settings });
+  await generatePrescriptionPdf(res, { visit, settings });
 });
 
 // ---- Online payment ----

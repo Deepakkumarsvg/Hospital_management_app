@@ -3,7 +3,7 @@
 Senior-review se nikli list. Priority order me, ek-ek karke fix ho rahi hai.
 Status: ⬜ pending · 🔨 in progress · ✅ done
 
-**Progress: 8 done · test suite 26 → 75 tests, all passing.**
+**Progress: 9 done · test suite 26 → 85 tests, all passing.**
 
 The test suite now boots its own in-memory MongoDB (single-node replica set),
 so `npm test` needs nothing installed — see `tests/globalSetup.js`.
@@ -51,6 +51,21 @@ so `npm test` needs nothing installed — see `tests/globalSetup.js`.
 | 20 | Search rewrite — `$lookup` instead of unbounded `$in` | billing/ipd/pharmacy services | ⬜ |
 | 21 | Frontend code-splitting (1.28 MB single chunk) | `App.jsx`, `vite.config.js` | ⬜ |
 | 22 | Single dashboard summary endpoint (11 calls → 1) | `controllers/reportController.js`, `Dashboard.jsx` | ⬜ |
+
+## 🚀 Deployment
+
+| # | Item | Files | Status |
+|---|------|-------|--------|
+| D1 | S3 storage driver (Render's disk is ephemeral) | `config/storage.js`, `middleware/upload.js`, `utils/serveFile.js`, `utils/pdf.js` | ✅ |
+| D2 | Vercel + Render + Atlas deploy configs | `render.yaml`, `frontend/vercel.json`, `docs/DEPLOYMENT.md` | ✅ |
+| D3 | Redis-backed rate limiting (needed before >1 instance) | `app.js` | ⬜ |
+| D4 | Scheduler off the web process (BullMQ or external cron) | `services/scheduler.js` | ⬜ |
+
+## 🐛 Found along the way (not yet fixed)
+
+| Item | Where | Why it matters |
+|------|-------|----------------|
+| Insurance settlement mutates `invoice.paidAmount` directly instead of going through `recordPayment()` | `services/insuranceService.js` (`changeStatus`, SETTLED branch) | Bypasses the atomic payment path from #4, so a settlement racing a cash payment can lose one of them. Should call `recordPayment` with `method: 'INSURANCE'`. |
 
 ## 🟡 P2 — UX
 

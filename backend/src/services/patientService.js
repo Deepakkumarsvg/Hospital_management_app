@@ -11,7 +11,7 @@ import { RadiologyOrder } from '../models/RadiologyOrder.js';
 import { InsuranceClaim } from '../models/InsuranceClaim.js';
 import { MedicineDispense } from '../models/MedicineDispense.js';
 import { BloodUnit } from '../models/BloodUnit.js';
-import { removeFile } from '../config/storage.js';
+import { removeObject } from '../config/storage.js';
 import { ApiError } from '../utils/ApiError.js';
 
 const SORT_MAP = {
@@ -130,7 +130,7 @@ export async function deletePatient(id) {
 
   // No history — safe to remove: cascade the attached documents (files + records) first.
   const docs = await PatientDocument.find({ patient: id }).select('storageKey');
-  await Promise.all(docs.map((d) => removeFile(d.storageKey)));
+  await Promise.all(docs.map((d) => removeObject(d.storageKey)));
   await PatientDocument.deleteMany({ patient: id });
 
   await Patient.findByIdAndDelete(id);

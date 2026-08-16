@@ -37,7 +37,7 @@ export const prescriptionPdf = asyncHandler(async (req, res) => {
     service.getVisit(req.params.id),
     getSettings(),
   ]);
-  generatePrescriptionPdf(res, { visit, settings });
+  await generatePrescriptionPdf(res, { visit, settings });
 });
 
 export const create = asyncHandler(async (req, res) => {

@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { resolvePath } from '../config/storage.js';
+import { getObjectBuffer } from '../config/storage.js';
 
 // Shared black & white document styling — mirrors the app's monochrome theme.
 const INK = '#111111';
@@ -24,14 +24,40 @@ function streamToResponse(doc, res, filename) {
   doc.pipe(res);
 }
 
+// PDFKit needs the logo as bytes, and with the S3 driver fetching those is a
+// network round trip. Every printed document carries the same logo, so it is
+// cached in memory.
+//
+// The cache key is the storage key, which is a fresh random name on every
+// upload — so a replaced logo simply misses the cache. Nothing has to be
+// invalidated, and no stale image can ever be drawn.
+const logoCache = new Map();
+
+async function loadLogo(storageKey) {
+  if (logoCache.has(storageKey)) return logoCache.get(storageKey);
+
+  let buffer = null;
+  try {
+    buffer = await getObjectBuffer(storageKey);
+  } catch {
+    // A missing logo must not break the document it belongs on. Cache the
+    // miss too, so a broken key isn't re-fetched on every single PDF.
+  }
+  logoCache.set(storageKey, buffer);
+  return buffer;
+}
+
 // Draw the hospital letterhead; returns the y just below it.
-function drawHeader(doc, settings) {
+async function drawHeader(doc, settings) {
   const s = settings || {};
   if (s.logo?.storageKey) {
-    try {
-      doc.image(resolvePath(s.logo.storageKey), 480, 40, { fit: [65, 65] });
-    } catch {
-      // Missing/corrupt logo file shouldn't break the document — skip it.
+    const logo = await loadLogo(s.logo.storageKey);
+    if (logo) {
+      try {
+        doc.image(logo, 480, 40, { fit: [65, 65] });
+      } catch {
+        // Corrupt image data — skip it rather than failing the document.
+      }
     }
   }
   doc.fillColor(INK).fontSize(20).font('Helvetica-Bold')
@@ -72,11 +98,11 @@ function drawInfoGrid(doc, rows, y) {
 // ---------------------------------------------------------------------------
 // INVOICE
 // ---------------------------------------------------------------------------
-export function generateInvoicePdf(res, { invoice, payments = [], settings }) {
+export async function generateInvoicePdf(res, { invoice, payments = [], settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${invoice.invoiceNo || 'invoice'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'TAX INVOICE', y);
 
   const p = invoice.patient || {};
@@ -160,11 +186,11 @@ export function generateInvoicePdf(res, { invoice, payments = [], settings }) {
 // ---------------------------------------------------------------------------
 // PRESCRIPTION (from an OPD visit)
 // ---------------------------------------------------------------------------
-export function generatePrescriptionPdf(res, { visit, settings }) {
+export async function generatePrescriptionPdf(res, { visit, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${visit.visitNo || 'prescription'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'PRESCRIPTION', y);
 
   const p = visit.patient || {};
@@ -252,11 +278,11 @@ export function generatePrescriptionPdf(res, { visit, settings }) {
 // ---------------------------------------------------------------------------
 // DISCHARGE SUMMARY (from an IPD admission)
 // ---------------------------------------------------------------------------
-export function generateDischargeSummaryPdf(res, { admission, settings }) {
+export async function generateDischargeSummaryPdf(res, { admission, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${admission.admissionNo || 'discharge'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'DISCHARGE SUMMARY', y);
 
   const p = admission.patient || {};
@@ -306,11 +332,11 @@ export function generateDischargeSummaryPdf(res, { admission, settings }) {
 // ---------------------------------------------------------------------------
 // LAB REPORT (from a Lab order)
 // ---------------------------------------------------------------------------
-export function generateLabReportPdf(res, { order, settings }) {
+export async function generateLabReportPdf(res, { order, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${order.orderNo || 'lab-report'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'LABORATORY REPORT', y);
 
   const p = order.patient || {};
@@ -371,11 +397,11 @@ export function generateLabReportPdf(res, { order, settings }) {
 // ---------------------------------------------------------------------------
 // RADIOLOGY REPORT (from a Radiology order)
 // ---------------------------------------------------------------------------
-export function generateRadiologyReportPdf(res, { order, settings }) {
+export async function generateRadiologyReportPdf(res, { order, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${order.orderNo || 'radiology-report'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'RADIOLOGY REPORT', y);
 
   const p = order.patient || {};
@@ -419,14 +445,14 @@ export function generateRadiologyReportPdf(res, { order, settings }) {
 // ---------------------------------------------------------------------------
 // HOSPITAL SUMMARY REPORT
 // ---------------------------------------------------------------------------
-export function generateReportSummaryPdf(res, { summary, settings }) {
+export async function generateReportSummaryPdf(res, { summary, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   const rangeLabel = summary.range?.from || summary.range?.to
     ? `${summary.range.from || 'start'} to ${summary.range.to || 'today'}`
     : 'all-time';
   streamToResponse(doc, res, `hms-summary-${rangeLabel}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'HOSPITAL SUMMARY REPORT', y);
   doc.fontSize(9).font('Helvetica').fillColor(MUTED).text(`Range: ${rangeLabel}`, 50, y);
   y += 20;
@@ -482,11 +508,11 @@ export function generateReportSummaryPdf(res, { summary, settings }) {
 // ---------------------------------------------------------------------------
 // PHARMACY DISPENSE RECEIPT
 // ---------------------------------------------------------------------------
-export function generateDispenseReceiptPdf(res, { dispense, settings }) {
+export async function generateDispenseReceiptPdf(res, { dispense, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${dispense.dispenseNo || 'dispense-receipt'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'PHARMACY RECEIPT', y);
 
   const p = dispense.patient || {};
@@ -534,11 +560,11 @@ export function generateDispenseReceiptPdf(res, { dispense, settings }) {
 // ---------------------------------------------------------------------------
 // PURCHASE ORDER
 // ---------------------------------------------------------------------------
-export function generatePurchaseOrderPdf(res, { po, settings }) {
+export async function generatePurchaseOrderPdf(res, { po, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${po.poNo || 'purchase-order'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'PURCHASE ORDER', y);
 
   const v = po.vendor || {};
@@ -588,11 +614,11 @@ export function generatePurchaseOrderPdf(res, { po, settings }) {
 // ---------------------------------------------------------------------------
 // AMBULANCE TRIP RECEIPT
 // ---------------------------------------------------------------------------
-export function generateAmbulanceReceiptPdf(res, { trip, settings }) {
+export async function generateAmbulanceReceiptPdf(res, { trip, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   streamToResponse(doc, res, `${trip.tripNo || 'ambulance-receipt'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, 'AMBULANCE TRIP RECEIPT', y);
 
   const p = trip.patient || {};
@@ -622,12 +648,12 @@ export function generateAmbulanceReceiptPdf(res, { trip, settings }) {
 // ---------------------------------------------------------------------------
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 
-export function generatePayslipPdf(res, { payslip, settings }) {
+export async function generatePayslipPdf(res, { payslip, settings }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50 });
   const period = `${MONTH_NAMES[payslip.month - 1]}-${payslip.year}`;
   streamToResponse(doc, res, `${payslip.payslipNo || 'payslip'}.pdf`);
 
-  let y = drawHeader(doc, settings);
+  let y = await drawHeader(doc, settings);
   y = drawTitle(doc, `PAYSLIP · ${period}`, y);
 
   const e = payslip.employee || {};

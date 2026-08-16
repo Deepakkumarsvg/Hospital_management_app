@@ -35,6 +35,25 @@ function validate() {
     errors.push('CLIENT_URL must be an explicit origin in production (wildcard CORS is unsafe).');
   }
 
+  const driver = (process.env.STORAGE_DRIVER || 'local').toLowerCase();
+  if (driver === 's3') {
+    const missing = ['S3_BUCKET', 'S3_ACCESS_KEY_ID', 'S3_SECRET_ACCESS_KEY'].filter((k) => !process.env[k]);
+    if (missing.length) {
+      errors.push(`STORAGE_DRIVER=s3 requires ${missing.join(', ')}.`);
+    }
+  } else if (isProd) {
+    // Local disk on a host with an ephemeral filesystem (Render, Fly, Heroku)
+    // silently loses every uploaded document on the next deploy. This is a
+    // warning rather than an error because a deployment with a real mounted
+    // volume — docker compose, a VM — is perfectly valid.
+    console.warn(
+      '\n⚠ STORAGE_DRIVER=local in production.\n' +
+      '  Uploaded documents are written to the container filesystem. If that\n' +
+      '  filesystem is ephemeral, every deploy will delete them. Set\n' +
+      '  STORAGE_DRIVER=s3, or make sure uploads/ is a persistent volume.\n'
+    );
+  }
+
   if (errors.length) fail(errors);
 }
 
