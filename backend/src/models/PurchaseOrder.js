@@ -3,13 +3,14 @@ import { register } from "../db/registry.js";
 import { tenantModel } from "../db/tenantModel.js";
 import { Counter } from './Counter.js';
 
-export const PO_STATUSES = ['DRAFT', 'ORDERED', 'RECEIVED', 'CANCELLED'];
+export const PO_STATUSES = ['DRAFT', 'ORDERED', 'PARTIALLY_RECEIVED', 'RECEIVED', 'CANCELLED'];
 
 const poItemSchema = new mongoose.Schema(
   {
     item: { type: mongoose.Schema.Types.ObjectId, ref: 'InventoryItem', required: true },
     name: { type: String, required: true },
     quantity: { type: Number, min: 1, required: true },
+    receivedQuantity: { type: Number, min: 0, default: 0 },
     unitPrice: { type: Number, min: 0, default: 0 },
     lineTotal: { type: Number, min: 0, default: 0 },
   },
@@ -23,7 +24,7 @@ const purchaseOrderSchema = new mongoose.Schema(
     items: { type: [poItemSchema], default: [] },
     total: { type: Number, min: 0, default: 0 },
     status: { type: String, enum: PO_STATUSES, default: 'ORDERED', index: true },
-    orderedAt: { type: Date, default: Date.now },
+    orderedAt: { type: Date, default: null },
     receivedAt: { type: Date, default: null },
     notes: { type: String, trim: true, default: '' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

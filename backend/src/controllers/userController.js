@@ -17,10 +17,17 @@ export const listRoles = asyncHandler(async (_req, res) => {
   sendSuccess(res, { message: 'Roles', data: ROLE_DEFINITIONS });
 });
 
+// GET /api/users/stats
+export const stats = asyncHandler(async (_req, res) =>
+  sendSuccess(res, { message: 'User stats', data: await service.userStats() }));
+
 // GET /api/users/:id
 export const getUser = asyncHandler(async (req, res) => {
-  const user = await service.getUser(req.params.id);
-  sendSuccess(res, { message: 'User fetched', data: { ...user.toSafeJSON(), department: user.department } });
+  const { user, linkedDoctor } = await service.getUser(req.params.id);
+  sendSuccess(res, {
+    message: 'User fetched',
+    data: { ...user.toSafeJSON(), department: user.department, linkedDoctor },
+  });
 });
 
 // POST /api/users

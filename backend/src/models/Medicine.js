@@ -18,6 +18,14 @@ const medicineSchema = new mongoose.Schema(
     currentStock: { type: Number, min: 0, default: 0 },
     minStock: { type: Number, min: 0, default: 10 },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+    // Manual corrections (damage/loss/count fix) — receive/dispense cover the
+    // normal flow, this is the audit trail for everything else.
+    stockAdjustments: [{
+      delta: { type: Number, required: true },
+      reason: { type: String, trim: true, required: true },
+      by: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+      at: { type: Date, default: Date.now },
+    }],
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

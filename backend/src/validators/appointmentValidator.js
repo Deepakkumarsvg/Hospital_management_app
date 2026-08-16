@@ -36,3 +36,12 @@ export const listAppointmentsQuerySchema = z.object({
   patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
   date: z.coerce.date().optional(), // filter to a single day
 });
+
+export const exportAppointmentsQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  status: z.enum([...APPOINTMENT_STATUSES, 'ALL']).optional().default('ALL'),
+  doctor: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  date: z.coerce.date().optional(),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});

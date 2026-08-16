@@ -16,10 +16,17 @@ const bloodUnitSchema = new mongoose.Schema(
     collectionDate: { type: Date, default: Date.now },
     expiryDate: { type: Date, required: true, index: true },
     status: { type: String, enum: UNIT_STATUSES, default: 'AVAILABLE', index: true },
+    // Set on reserve (holds stock for a specific patient ahead of issue).
+    reservedFor: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', default: null },
+    reservedAt: { type: Date, default: null },
     // Set on issue.
     issuedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', default: null },
     issuedAt: { type: Date, default: null },
     issuedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // Optional context captured at issue time.
+    admission: { type: mongoose.Schema.Types.ObjectId, ref: 'IPDAdmission', default: null },
+    reason: { type: String, trim: true, default: '' }, // e.g. Surgery, Transfusion, Emergency
+    chargeAmount: { type: Number, default: 0 }, // rate billed to the patient for this unit
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

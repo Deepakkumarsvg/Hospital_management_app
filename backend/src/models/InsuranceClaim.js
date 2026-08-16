@@ -10,12 +10,19 @@ export const CLAIM_TRANSITIONS = {
   SUBMITTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED'],
   UNDER_REVIEW: ['APPROVED', 'REJECTED'],
   APPROVED: ['SETTLED'],
-  REJECTED: [],
+  // A rejected claim can be reopened for correction (back to DRAFT, editable)
+  // and resubmitted rather than being a permanent dead end.
+  REJECTED: ['DRAFT'],
   SETTLED: [],
 };
 
 const historySchema = new mongoose.Schema(
-  { status: String, at: { type: Date, default: Date.now }, by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' } },
+  {
+    status: String,
+    at: { type: Date, default: Date.now },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    note: { type: String, trim: true, default: '' }, // reason/remark recorded at this transition
+  },
   { _id: false }
 );
 

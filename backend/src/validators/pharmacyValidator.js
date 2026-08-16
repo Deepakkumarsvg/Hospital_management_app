@@ -27,11 +27,17 @@ export const receiveBatchSchema = z.object({
 
 export const dispenseSchema = z.object({
   patient: objectId('patient').optional().nullable(),
+  doctor: objectId('doctor').optional().nullable(),
   opdVisit: objectId('opdVisit').optional().nullable(),
   items: z.array(z.object({
     medicine: objectId('medicine'),
     quantity: z.coerce.number().int().min(1),
   })).min(1, 'Add at least one medicine'),
+});
+
+export const adjustStockSchema = z.object({
+  delta: z.coerce.number().int().refine((v) => v !== 0, 'Delta cannot be zero'),
+  reason: z.string().trim().min(2, 'Reason is required').max(200),
 });
 
 export const listMedicinesQuerySchema = z.object({
@@ -40,4 +46,30 @@ export const listMedicinesQuerySchema = z.object({
   search: z.string().trim().optional().default(''),
   status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
   lowStock: z.enum(['true', 'false']).optional(),
+});
+
+export const exportMedicinesQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
+  lowStock: z.enum(['true', 'false']).optional(),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});
+
+export const listDispensesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().optional().default(''),
+  patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  doctor: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+});
+
+export const exportDispensesQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  doctor: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});
+
+export const expiringQuerySchema = z.object({
+  days: z.coerce.number().int().min(1).max(365).default(90),
 });

@@ -1,8 +1,11 @@
+import path from 'path';
 import { InsuranceClaim, CLAIM_TRANSITIONS } from '../models/InsuranceClaim.js';
+import { ClaimDocument, CLAIM_DOCUMENT_CATEGORIES } from '../models/ClaimDocument.js';
 import { Invoice } from '../models/Invoice.js';
 import { Payment } from '../models/Payment.js';
 import { Patient } from '../models/Patient.js';
 import { ApiError } from '../utils/ApiError.js';
+import { removeFile } from '../config/storage.js';
 
 const POPULATE = [
   { path: 'patient', select: 'uhid firstName lastName' },
@@ -10,10 +13,11 @@ const POPULATE = [
   { path: 'createdBy', select: 'name' },
 ];
 
-export async function listClaims({ page, limit, search, status, patient }) {
+export async function listClaims({ page, limit, search, status, patient, invoice }) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (patient) filter.patient = patient;
+  if (invoice) filter.invoice = invoice;
   if (search) filter.claimNo = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
 
   const [items, total] = await Promise.all([
@@ -54,7 +58,7 @@ export async function updateClaim(id, data) {
   return claim.populate(POPULATE);
 }
 
-export async function changeStatus(id, { status, approvedAmount }, userId) {
+export async function changeStatus(id, { status, approvedAmount, note }, userId) {
   const claim = await InsuranceClaim.findById(id);
   if (!claim) throw ApiError.notFound('Claim not found', 'CLAIM_NOT_FOUND');
 
@@ -73,9 +77,14 @@ export async function changeStatus(id, { status, approvedAmount }, userId) {
     claim.approvedAmount = 0;
     claim.rejectedAmount = claim.claimAmount;
   }
+  if (status === 'DRAFT') {
+    // Reopening a rejected claim for correction — clear the stale outcome.
+    claim.approvedAmount = 0;
+    claim.rejectedAmount = 0;
+  }
 
   claim.status = status;
-  claim.history.push({ status, by: userId });
+  claim.history.push({ status, by: userId, note: note || '' });
   await claim.save();
 
   // Settling an approved claim posts an INSURANCE payment against the invoice.
@@ -94,11 +103,47 @@ export async function changeStatus(id, { status, approvedAmount }, userId) {
   return claim.populate(POPULATE);
 }
 
+// Claim documents (pre-auth letters, discharge summaries, bills, policy copies)
+export async function listClaimDocuments(claimId) {
+  return ClaimDocument.find({ claim: claimId }).populate('uploadedBy', 'name').sort({ createdAt: -1 });
+}
+
+export async function createClaimDocument(claimId, file, category, userId) {
+  const claim = await InsuranceClaim.findById(claimId).select('_id');
+  if (!claim) throw ApiError.notFound('Claim not found', 'CLAIM_NOT_FOUND');
+  const cat = CLAIM_DOCUMENT_CATEGORIES.includes(category) ? category : 'OTHER';
+  return ClaimDocument.create({
+    claim: claimId,
+    category: cat,
+    originalName: file.originalname,
+    storageKey: path.join('claims', claimId, file.filename),
+    mimeType: file.mimetype,
+    size: file.size,
+    uploadedBy: userId,
+  });
+}
+
+export async function getClaimDocument(claimId, docId) {
+  const doc = await ClaimDocument.findOne({ _id: docId, claim: claimId });
+  if (!doc) throw ApiError.notFound('Document not found', 'DOCUMENT_NOT_FOUND');
+  return doc;
+}
+
+export async function deleteClaimDocument(claimId, docId) {
+  const doc = await ClaimDocument.findOneAndDelete({ _id: docId, claim: claimId });
+  if (!doc) throw ApiError.notFound('Document not found', 'DOCUMENT_NOT_FOUND');
+  removeFile(doc.storageKey);
+  return doc;
+}
+
 export async function insuranceStats() {
   const rows = await InsuranceClaim.aggregate([
-    { $group: { _id: null, claimed: { $sum: '$claimAmount' }, approved: { $sum: '$approvedAmount' } } },
+    { $group: { _id: null, claimed: { $sum: '$claimAmount' }, approved: { $sum: '$approvedAmount' }, rejected: { $sum: '$rejectedAmount' } } },
   ]);
-  const agg = rows[0] || { claimed: 0, approved: 0 };
-  const pending = await InsuranceClaim.countDocuments({ status: { $in: ['SUBMITTED', 'UNDER_REVIEW'] } });
-  return { claimed: agg.claimed, approved: agg.approved, pending };
+  const agg = rows[0] || { claimed: 0, approved: 0, rejected: 0 };
+  const [pending, settled] = await Promise.all([
+    InsuranceClaim.countDocuments({ status: { $in: ['SUBMITTED', 'UNDER_REVIEW'] } }),
+    InsuranceClaim.countDocuments({ status: 'SETTLED' }),
+  ]);
+  return { claimed: agg.claimed, approved: agg.approved, rejected: agg.rejected, pending, settled };
 }

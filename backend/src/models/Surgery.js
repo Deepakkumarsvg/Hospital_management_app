@@ -20,6 +20,8 @@ const surgerySchema = new mongoose.Schema(
     procedure: { type: String, required: true, trim: true },
     scheduledDate: { type: Date, required: true },
     scheduledTime: { type: String, default: '' },
+    estimatedDuration: { type: Number, min: 15, default: 120 }, // minutes — used for theatre conflict checks
+    admission: { type: mongoose.Schema.Types.ObjectId, ref: 'IPDAdmission', default: null },
     anesthetist: { type: String, trim: true, default: '' },
     assistants: { type: String, trim: true, default: '' },
     preOpNotes: { type: String, trim: true, default: '' },

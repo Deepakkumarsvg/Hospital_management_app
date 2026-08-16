@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import Modal from '../../components/ui/Modal.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
@@ -10,7 +11,16 @@ import { activeDepartments } from '../../services/departmentService.js';
 import { activeDoctors } from '../../services/doctorService.js';
 import { toDateInput, APPOINTMENT_TYPE_OPTIONS } from '../../utils/constants.js';
 
-export default function AppointmentForm({ open, onClose, onSaved, presetPatient }) {
+// Weekday letters used by Doctor.availability, indexed by JS Date#getDay() (0=Sun).
+const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+function weekdayOf(dateStr) {
+  if (!dateStr) return null;
+  return DOW[new Date(`${dateStr}T00:00:00`).getDay()];
+}
+
+// presetDoctor/presetDepartment/presetDate let callers (e.g. "suggest a
+// follow-up" from OPD) pre-fill the form instead of starting blank.
+export default function AppointmentForm({ open, onClose, onSaved, presetPatient, presetDoctor, presetDepartment, presetDate }) {
   const toast = useToast();
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -29,14 +39,18 @@ export default function AppointmentForm({ open, onClose, onSaved, presetPatient 
     if (!open) return;
     activeDepartments().then(setDepartments).catch(() => {});
     setPatient(presetPatient || null);
-    setDepartment(''); setDoctor(''); setType('NEW'); setReason('');
-    setDate(toDateInput(new Date().toISOString())); setTime('10:00'); setErrors({});
-  }, [open, presetPatient]);
+    setDepartment(presetDepartment || ''); setDoctor(presetDoctor || ''); setType('NEW'); setReason('');
+    setDate(presetDate || toDateInput(new Date().toISOString())); setTime('10:00'); setErrors({});
+  }, [open, presetPatient, presetDoctor, presetDepartment, presetDate]);
 
-  // Load doctors when department changes.
+  // Load doctors when department changes — keep the current doctor selected
+  // if it's still valid for the new list (so a preset survives this reload).
   useEffect(() => {
     if (!department) { setDoctors([]); setDoctor(''); return; }
-    activeDoctors(department).then((list) => { setDoctors(list); setDoctor(''); }).catch(() => setDoctors([]));
+    activeDoctors(department).then((list) => {
+      setDoctors(list);
+      setDoctor((prev) => (prev && list.some((d) => (d.id || d._id) === prev) ? prev : ''));
+    }).catch(() => setDoctors([]));
   }, [department]);
 
   const validate = () => {
@@ -72,6 +86,11 @@ export default function AppointmentForm({ open, onClose, onSaved, presetPatient 
   const deptOptions = departments.map((d) => ({ value: d.id || d._id, label: `${d.name} (${d.code})` }));
   const docOptions = doctors.map((d) => ({ value: d.id || d._id, label: `${d.fullName} · ${d.specialization}` }));
 
+  // Non-blocking heads-up if the chosen date falls outside the doctor's weekly availability.
+  const selectedDoctor = doctors.find((d) => (d.id || d._id) === doctor);
+  const offDay = selectedDoctor && date
+    && !(selectedDoctor.availability || []).some((a) => a.day === weekdayOf(date));
+
   return (
     <Modal
       open={open} onClose={onClose} size="xl" title="Book Appointment"
@@ -93,6 +112,11 @@ export default function AppointmentForm({ open, onClose, onSaved, presetPatient 
           disabled={!department} error={errors.doctor} />
         <Input type="date" label="Date *" value={date} onChange={(e) => setDate(e.target.value)} error={errors.date} />
         <Input type="time" label="Time *" value={time} onChange={(e) => setTime(e.target.value)} error={errors.time} />
+        {offDay && (
+          <p className="sm:col-span-2 -mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> {selectedDoctor.fullName} isn't scheduled on {weekdayOf(date)}s per their weekly availability. You can still book — just double-check with them.
+          </p>
+        )}
         <Select label="Type" options={APPOINTMENT_TYPE_OPTIONS} value={type} onChange={(e) => setType(e.target.value)} />
         <div className="sm:col-span-2">
           <label className="label">Reason / Notes</label>

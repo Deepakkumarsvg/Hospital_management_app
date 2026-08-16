@@ -1,6 +1,7 @@
 // Control-plane: the Tenant registry. Lives in the control database (NOT tenant
 // scoped) and maps a hospital's slug → its database name.
 import mongoose from 'mongoose';
+import crypto from 'crypto';
 import { controlConnection, tenantConnection } from '../db/connectionManager.js';
 import { runWithTenant } from '../db/tenantContext.js';
 import { env } from '../config/env.js';
@@ -91,7 +92,10 @@ export async function provisionTenant({ slug, name, adminEmail, adminPassword })
   const conn = tenantConnection(tenant.dbName);
   const admin = {
     email: (adminEmail || `admin@${tenant.slug}.local`).toLowerCase(),
-    password: adminPassword || 'Admin@123',
+    // A fixed fallback password would be the same guessable string for every
+    // hospital that didn't set one — generate a fresh random one instead,
+    // shown once in the provisioning response.
+    password: adminPassword || crypto.randomBytes(9).toString('base64url'),
   };
   await runWithTenant({ tenant, conn }, async () => {
     for (const def of ROLE_DEFINITIONS) {

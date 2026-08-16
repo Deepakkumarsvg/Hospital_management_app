@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { CalendarCheck, Users, Clock, Stethoscope, AlertCircle } from 'lucide-react';
+import { CalendarCheck, Users, Clock, Stethoscope, AlertCircle, ArrowRight } from 'lucide-react';
 import Card from '../components/ui/Card.jsx';
 import Badge from '../components/ui/Badge.jsx';
+import Button from '../components/ui/Button.jsx';
 import Spinner from '../components/ui/Spinner.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
+import OpdStartForm from './opd/OpdStartForm.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import { getMyDoctorProfile } from '../services/doctorService.js';
 import { listAppointments } from '../services/appointmentService.js';
+import { listVisits } from '../services/opdService.js';
 import { toDateInput, APPOINTMENT_STATUS_META } from '../utils/constants.js';
 
 function Stat({ label, value, icon: Icon }) {
@@ -27,24 +30,34 @@ export default function DoctorDashboard() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(undefined); // undefined=loading, null=unlinked
   const [today, setToday] = useState([]);
+  const [visitsByAppt, setVisitsByAppt] = useState({}); // appointmentId -> OPD visit
   const [loading, setLoading] = useState(true);
+  const [startingOpdAppt, setStartingOpdAppt] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const doc = await getMyDoctorProfile();
-        setProfile(doc);
-        if (doc) {
-          const { items } = await listAppointments({ doctor: doc.id || doc._id, date: toDateInput(new Date().toISOString()), limit: 50 });
-          setToday(items);
-        }
-      } catch {
-        setProfile(null);
-      } finally {
-        setLoading(false);
+  const load = useCallback(async () => {
+    try {
+      const doc = await getMyDoctorProfile();
+      setProfile(doc);
+      if (doc) {
+        const docId = doc.id || doc._id;
+        const day = toDateInput(new Date().toISOString());
+        const [{ items: appts }, { items: visits }] = await Promise.all([
+          listAppointments({ doctor: docId, date: day, limit: 50 }),
+          listVisits({ doctor: docId, date: day, limit: 50 }),
+        ]);
+        setToday(appts);
+        setVisitsByAppt(Object.fromEntries(
+          visits.filter((v) => v.appointment).map((v) => [String(v.appointment), v])
+        ));
       }
-    })();
+    } catch {
+      setProfile(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   if (loading) return <Spinner full />;
 
@@ -52,7 +65,9 @@ export default function DoctorDashboard() {
   if (!profile) {
     return (
       <div className="space-y-5">
-        <h1 className="text-xl font-semibold">Welcome, {user?.name?.split(' ')[0]}</h1>
+        <div className="card p-5">
+          <h1 className="text-xl font-semibold">Welcome, {user?.name?.split(' ')[0]}</h1>
+        </div>
         <Card>
           <EmptyState
             icon={AlertCircle}
@@ -69,7 +84,7 @@ export default function DoctorDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="card p-5">
         <h1 className="text-xl font-semibold">Welcome, {profile.fullName}</h1>
         <p className="mt-1 text-sm text-muted">{profile.specialization} · {profile.department?.name}</p>
       </div>
@@ -82,31 +97,49 @@ export default function DoctorDashboard() {
 
       <Card className="!p-0">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 className="flex items-center gap-2 text-sm font-semibold"><Stethoscope className="h-4 w-4" /> Today's Schedule</h2>
+          <h2 className="flex items-center gap-2 text-sm font-semibold"><Stethoscope className="h-4 w-4" /> My Queue — Today</h2>
         </div>
         {today.length === 0 ? (
           <EmptyState icon={CalendarCheck} title="No appointments today" description="Enjoy the quiet — nothing on your schedule." />
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
                   <th className="px-4 py-3 font-medium">Time</th>
                   <th className="px-4 py-3 font-medium">Patient</th>
                   <th className="px-4 py-3 font-medium">Type</th>
                   <th className="px-4 py-3 font-medium">Status</th>
+                  <th className="px-4 py-3 text-right font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
                 {today.sort((a, b) => a.time.localeCompare(b.time)).map((a) => {
                   const meta = APPOINTMENT_STATUS_META[a.status] || { label: a.status, tone: 'neutral' };
+                  const visit = visitsByAppt[String(a.id || a._id)];
                   return (
-                    <tr key={a.id || a._id} className="cursor-pointer border-b border-border/60 last:border-0 hover:bg-surface"
-                      onClick={() => navigate('/appointments')}>
+                    <tr key={a.id || a._id} className="border-b border-border/60 last:border-0 hover:bg-surface">
                       <td className="px-4 py-3 font-medium tabular-nums">{a.time}</td>
                       <td className="px-4 py-3">{a.patient?.firstName} {a.patient?.lastName} <span className="font-mono text-xs text-muted">{a.patient?.uhid}</span></td>
                       <td className="px-4 py-3"><Badge>{a.type}</Badge></td>
                       <td className="px-4 py-3"><Badge tone={meta.tone}>{meta.label}</Badge></td>
+                      <td className="px-4 py-3 text-right">
+                        {visit && visit.status === 'OPEN' && (
+                          <Button variant="outline" className="h-8 !px-2" onClick={() => navigate(`/opd/${visit.id || visit._id}`)}>
+                            Continue <ArrowRight className="h-3.5 w-3.5" />
+                          </Button>
+                        )}
+                        {visit && visit.status !== 'OPEN' && (
+                          <Button variant="ghost" className="h-8 !px-2" onClick={() => navigate(`/opd/${visit.id || visit._id}`)}>
+                            View visit
+                          </Button>
+                        )}
+                        {!visit && a.status === 'CHECKED_IN' && (
+                          <Button className="h-8 !px-2" onClick={() => setStartingOpdAppt(a)}>
+                            <Stethoscope className="h-3.5 w-3.5" /> Start OPD
+                          </Button>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -115,6 +148,16 @@ export default function DoctorDashboard() {
           </div>
         )}
       </Card>
+
+      <OpdStartForm
+        open={!!startingOpdAppt}
+        onClose={() => setStartingOpdAppt(null)}
+        onCreated={(v) => navigate(`/opd/${v.id || v._id}`)}
+        presetPatient={startingOpdAppt?.patient}
+        presetDoctor={startingOpdAppt?.doctor?.id || startingOpdAppt?.doctor?._id || profile.id || profile._id}
+        presetDepartment={startingOpdAppt?.department?.id || startingOpdAppt?.department?._id}
+        presetAppointment={startingOpdAppt?.id || startingOpdAppt?._id}
+      />
     </div>
   );
 }

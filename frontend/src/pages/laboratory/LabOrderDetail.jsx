@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import {
-  ArrowLeft, FlaskConical, TestTube, Cog, CheckCircle2, ShieldCheck, XCircle, Save, Printer,
+  ArrowLeft, FlaskConical, TestTube, Cog, CheckCircle2, ShieldCheck, XCircle, Save, Printer, FileDown,
 } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
@@ -11,7 +11,7 @@ import Select from '../../components/ui/Select.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { getLabOrder, changeLabStatus, enterLabResults } from '../../services/labService.js';
+import { getLabOrder, changeLabStatus, enterLabResults, downloadLabReportPdf } from '../../services/labService.js';
 import {
   CAN_LAB_STATUS, CAN_LAB_PROCESS, LAB_STATUS_META, LAB_NEXT, RESULT_FLAG_OPTIONS, formatDateTime,
 } from '../../utils/constants.js';
@@ -23,6 +23,28 @@ const ACTION = {
   VERIFIED: { label: 'Verify', icon: ShieldCheck },
   CANCELLED: { label: 'Cancel', icon: XCircle, danger: true },
 };
+
+// Best-effort auto-flag from a numeric result vs. a "lo-hi", "<n" or ">n"
+// reference range — still editable afterward, just saves the common case.
+function suggestFlag(referenceRange, result) {
+  if (!referenceRange || result === '' || result == null) return null;
+  const val = parseFloat(result);
+  if (Number.isNaN(val)) return null;
+  const range = referenceRange.trim();
+
+  let m = /^(-?\d+\.?\d*)\s*-\s*(-?\d+\.?\d*)$/.exec(range);
+  if (m) {
+    const lo = parseFloat(m[1]); const hi = parseFloat(m[2]);
+    if (val < lo) return 'LOW';
+    if (val > hi) return 'HIGH';
+    return 'NORMAL';
+  }
+  m = /^[<≤]\s*(-?\d+\.?\d*)$/.exec(range);
+  if (m) return val > parseFloat(m[1]) ? 'HIGH' : 'NORMAL';
+  m = /^[>≥]\s*(-?\d+\.?\d*)$/.exec(range);
+  if (m) return val < parseFloat(m[1]) ? 'LOW' : 'NORMAL';
+  return null;
+}
 
 export default function LabOrderDetail() {
   const { id } = useParams();
@@ -67,13 +89,28 @@ export default function LabOrderDetail() {
       setOrder(updated); toast.success('Results saved'); load();
     } catch (err) { toast.error(err.message || 'Failed'); } finally { setBusy(false); }
   };
-  const setRow = (i, k, v) => setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [k]: v } : r)));
+  const setRow = (i, k, v) => setRows((prev) => prev.map((r, idx) => {
+    if (idx !== i) return r;
+    const updated = { ...r, [k]: v };
+    if (k === 'result') {
+      const suggested = suggestFlag(r.referenceRange, v);
+      if (suggested) updated.flag = suggested;
+    }
+    return updated;
+  }));
 
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between print:hidden">
         <Link to="/laboratory" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg"><ArrowLeft className="h-4 w-4" /> Back to Laboratory</Link>
-        {order.status === 'VERIFIED' && <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print Report</Button>}
+        {order.status === 'VERIFIED' && (
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => window.print()}><Printer className="h-4 w-4" /> Print Report</Button>
+            <Button variant="outline" onClick={() => downloadLabReportPdf(order.id || order._id, order.orderNo).catch((e) => toast.error(e.message || 'PDF failed'))}>
+              <FileDown className="h-4 w-4" /> Download PDF
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -84,6 +121,11 @@ export default function LabOrderDetail() {
             <Badge tone={meta.tone}>{meta.label}</Badge>
           </div>
           <p className="mt-0.5 text-sm text-muted"><span className="font-mono">{order.orderNo}</span> · {order.patient?.uhid}{order.doctor ? ` · Dr. ${order.doctor.firstName} ${order.doctor.lastName}` : ''} · {formatDateTime(order.createdAt)}</p>
+          {order.opdVisit && (
+            <Link to={`/opd/${order.opdVisit.id || order.opdVisit._id}`} className="mt-1 inline-block text-xs text-muted hover:text-fg hover:underline print:hidden">
+              From OPD visit {order.opdVisit.visitNo} →
+            </Link>
+          )}
         </div>
         {nexts.length > 0 && (
           <div className="flex flex-wrap gap-2 print:hidden">

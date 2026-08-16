@@ -129,12 +129,15 @@ export const ITEM_CATEGORY_OPTIONS = ['CONSUMABLE', 'SURGICAL', 'EQUIPMENT', 'OF
 export const PO_STATUS_META = {
   DRAFT: { label: 'Draft', tone: 'neutral' },
   ORDERED: { label: 'Ordered', tone: 'warning' },
+  PARTIALLY_RECEIVED: { label: 'Partially Received', tone: 'warning' },
   RECEIVED: { label: 'Received', tone: 'success' },
   CANCELLED: { label: 'Cancelled', tone: 'danger' },
 };
 
 // ---- Phase 6: Finance ----
 export const CAN_BILLING = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'];
+// Cancelling/refunding reverses money already billed or collected — finance roles only.
+export const CAN_BILLING_REVERSE = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'];
 export const CAN_INSURANCE = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'];
 
 export const INVOICE_CATEGORY_OPTIONS = [
@@ -166,7 +169,7 @@ export const CLAIM_NEXT = {
   SUBMITTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED'],
   UNDER_REVIEW: ['APPROVED', 'REJECTED'],
   APPROVED: ['SETTLED'],
-  REJECTED: [], SETTLED: [],
+  REJECTED: ['DRAFT'], SETTLED: [],
 };
 
 export function money(n) {
@@ -204,6 +207,11 @@ export const LEAVE_TYPE_OPTIONS = ['CASUAL', 'SICK', 'EARNED', 'UNPAID'].map((v)
 export const LEAVE_STATUS_META = {
   PENDING: { label: 'Pending', tone: 'warning' }, APPROVED: { label: 'Approved', tone: 'success' }, REJECTED: { label: 'Rejected', tone: 'danger' },
 };
+export const PAYSLIP_STATUS_META = {
+  GENERATED: { label: 'Generated', tone: 'warning' }, PAID: { label: 'Paid', tone: 'success' },
+};
+export const MONTH_OPTIONS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+  .map((v, i) => ({ value: String(i + 1), label: v }));
 
 export const AMBULANCE_STATUS_META = {
   AVAILABLE: { label: 'Available', tone: 'success' }, ON_TRIP: { label: 'On trip', tone: 'warning' }, MAINTENANCE: { label: 'Maintenance', tone: 'neutral' },

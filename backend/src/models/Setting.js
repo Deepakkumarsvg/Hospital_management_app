@@ -21,6 +21,11 @@ const settingSchema = new mongoose.Schema(
     currency: { type: String, trim: true, default: '₹' },
     defaultTaxPercent: { type: Number, min: 0, max: 100, default: 0 },
     invoiceFooter: { type: String, trim: true, default: 'Thank you for choosing us. Get well soon!' },
+    logo: {
+      storageKey: { type: String, default: '' },
+      mimeType: { type: String, default: '' },
+      originalName: { type: String, default: '' },
+    },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

@@ -12,6 +12,8 @@ const MGMT = [ROLES.ADMIN, ROLES.ACCOUNTANT];
 
 router.get('/summary', authorize(...MGMT), c.summary);
 router.get('/doctor-activity', authorize(...MGMT), c.doctorActivity);
+router.get('/export/summary', authorize(...MGMT), c.exportSummary);
+router.get('/export/summary/pdf', authorize(...MGMT), c.summaryPdf);
 router.get('/export/invoices', authorize(...MGMT), c.exportInvoices);
 router.get('/export/doctor-activity', authorize(...MGMT), c.exportDoctorActivity);
 

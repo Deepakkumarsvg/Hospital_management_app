@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { Readable } from 'stream';
 
 // Escape a value for CSV.
 function csvCell(v) {
@@ -14,6 +15,25 @@ export function sendCsv(res, filename, rows) {
   res.setHeader('Content-Type', 'text/csv');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
   res.send(lines.join('\n'));
+}
+
+// Parse an uploaded CSV buffer into an array of row objects keyed by the
+// header row — the mirror of sendCsv, for bulk-import flows.
+export async function parseCsv(buffer) {
+  const wb = new ExcelJS.Workbook();
+  await wb.csv.read(Readable.from(buffer));
+  const ws = wb.worksheets[0];
+  if (!ws) return [];
+  const headers = ws.getRow(1).values.slice(1).map((h) => String(h ?? '').trim());
+  const rows = [];
+  for (let i = 2; i <= ws.rowCount; i++) {
+    const values = ws.getRow(i).values.slice(1);
+    if (values.every((v) => v == null || v === '')) continue;
+    const row = {};
+    headers.forEach((h, idx) => { row[h] = values[idx] != null ? String(values[idx]).trim() : ''; });
+    rows.push(row);
+  }
+  return rows;
 }
 
 // Stream an array of flat objects as an .xlsx download.

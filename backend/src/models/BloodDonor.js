@@ -13,9 +13,22 @@ const bloodDonorSchema = new mongoose.Schema(
     age: { type: Number, min: 18, max: 65, default: null },
     address: { type: String, trim: true, default: '' },
     lastDonation: { type: Date, default: null },
+    donationCount: { type: Number, default: 0 },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// Standard eligibility rule: at least 90 days since the last donation.
+export const DONATION_INTERVAL_DAYS = 90;
+bloodDonorSchema.virtual('eligible').get(function () {
+  if (!this.lastDonation) return true;
+  const nextEligible = new Date(this.lastDonation).getTime() + DONATION_INTERVAL_DAYS * 24 * 3600 * 1000;
+  return Date.now() >= nextEligible;
+});
+bloodDonorSchema.virtual('nextEligibleDate').get(function () {
+  if (!this.lastDonation) return null;
+  return new Date(new Date(this.lastDonation).getTime() + DONATION_INTERVAL_DAYS * 24 * 3600 * 1000);
+});
 
 register("BloodDonor", bloodDonorSchema);
 export const BloodDonor = tenantModel("BloodDonor");

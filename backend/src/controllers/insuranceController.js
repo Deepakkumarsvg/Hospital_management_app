@@ -1,5 +1,7 @@
+import path from 'path';
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/insuranceService.js';
+import { resolvePath, removeFile } from '../config/storage.js';
 
 export const list = asyncHandler(async (req, res) => {
   const { items, pagination } = await service.listClaims(req.query);
@@ -15,3 +17,32 @@ export const update = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: 'Claim updated', data: await service.updateClaim(req.params.id, req.body) }));
 export const changeStatus = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: `Claim ${req.body.status}`, data: await service.changeStatus(req.params.id, req.body, req.user?._id) }));
+
+// Claim documents
+export const listClaimDocuments = asyncHandler(async (req, res) =>
+  sendSuccess(res, { message: 'Documents', data: await service.listClaimDocuments(req.params.id) }));
+
+export const uploadClaimDocument = asyncHandler(async (req, res) => {
+  try {
+    const doc = await service.createClaimDocument(req.params.id, req.file, req.body.category, req.user?._id);
+    sendSuccess(res, { statusCode: 201, message: 'Document uploaded', data: doc });
+  } catch (err) {
+    removeFile(path.join('claims', req.params.id, req.file.filename));
+    throw err;
+  }
+});
+
+export const downloadClaimDocument = asyncHandler(async (req, res) => {
+  const doc = await service.getClaimDocument(req.params.id, req.params.docId);
+  if (req.query.inline === 'true') {
+    res.setHeader('Content-Type', doc.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.originalName)}"`);
+    return res.sendFile(resolvePath(doc.storageKey));
+  }
+  res.download(resolvePath(doc.storageKey), doc.originalName);
+});
+
+export const deleteClaimDocument = asyncHandler(async (req, res) => {
+  await service.deleteClaimDocument(req.params.id, req.params.docId);
+  sendSuccess(res, { message: 'Document deleted', data: null });
+});

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, BedDouble, StickyNote, ArrowLeftRight, LogOut, Clock, Send, FileDown } from 'lucide-react';
+import { ArrowLeft, BedDouble, StickyNote, ArrowLeftRight, LogOut, Clock, Send, FileDown, Pencil, XCircle } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
@@ -8,10 +8,15 @@ import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
+import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { getAdmission, addNursingNote, transferBed, dischargePatient, downloadDischargePdf } from '../../services/ipdService.js';
+import {
+  getAdmission, addNursingNote, transferBed, dischargePatient, cancelAdmission,
+  updateAdmission, downloadDischargePdf,
+} from '../../services/ipdService.js';
 import { availableBeds } from '../../services/facilityService.js';
+import { activeDoctors } from '../../services/doctorService.js';
 import { CAN_IPD_ADMIT, CAN_IPD_NURSE, IPD_STATUS_META, formatDateTime, formatDate } from '../../utils/constants.js';
 
 function Field({ label, value }) {
@@ -32,6 +37,9 @@ export default function IpdDetail() {
   const [noteSaving, setNoteSaving] = useState(false);
   const [transferOpen, setTransferOpen] = useState(false);
   const [dischargeOpen, setDischargeOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -56,6 +64,19 @@ export default function IpdDetail() {
     finally { setNoteSaving(false); }
   };
 
+  const doCancel = async () => {
+    setCancelling(true);
+    try {
+      setAdm(await cancelAdmission(id));
+      toast.success('Admission cancelled — bed freed');
+      setCancelConfirm(false);
+    } catch (err) {
+      toast.error(err.message || 'Could not cancel admission');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
       <Link to="/ipd" className="inline-flex items-center gap-1.5 text-sm text-muted hover:text-fg"><ArrowLeft className="h-4 w-4" /> Back to IPD</Link>
@@ -72,7 +93,11 @@ export default function IpdDetail() {
           <Button variant="outline" onClick={() => downloadDischargePdf(adm.id || adm._id, adm.admissionNo).catch((e) => toast.error(e.message || 'PDF failed'))}><FileDown className="h-4 w-4" /> Summary PDF</Button>
           {active && canAdmit && (
             <>
+              <Button variant="outline" onClick={() => setEditOpen(true)}><Pencil className="h-4 w-4" /> Edit</Button>
               <Button variant="outline" onClick={() => setTransferOpen(true)}><ArrowLeftRight className="h-4 w-4" /> Transfer</Button>
+              <Button variant="outline" className="!border-red-500/40 !text-red-500 hover:!bg-red-500/10" onClick={() => setCancelConfirm(true)}>
+                <XCircle className="h-4 w-4" /> Cancel Admission
+              </Button>
               <Button onClick={() => setDischargeOpen(true)}><LogOut className="h-4 w-4" /> Discharge</Button>
             </>
           )}
@@ -121,7 +146,65 @@ export default function IpdDetail() {
 
       {transferOpen && <TransferModal admission={adm} onClose={() => setTransferOpen(false)} onSaved={(a) => { setAdm(a); }} />}
       {dischargeOpen && <DischargeModal admission={adm} onClose={() => setDischargeOpen(false)} onSaved={(a) => { setAdm(a); }} />}
+      {editOpen && <EditAdmissionModal admission={adm} onClose={() => setEditOpen(false)} onSaved={(a) => { setAdm(a); }} />}
+      <ConfirmDialog
+        open={cancelConfirm}
+        onClose={() => setCancelConfirm(false)}
+        onConfirm={doCancel}
+        loading={cancelling}
+        title="Cancel this admission?"
+        confirmLabel="Cancel Admission"
+        message={`This will mark ${adm.admissionNo} as cancelled and free bed ${adm.bed?.bedNo}. Use this only if the admission was created by mistake — for a patient who actually received care, use Discharge instead.`}
+      />
     </div>
+  );
+}
+
+function EditAdmissionModal({ admission, onClose, onSaved }) {
+  const toast = useToast();
+  const [doctors, setDoctors] = useState([]);
+  const [doctor, setDoctor] = useState(admission.admittingDoctor?.id || admission.admittingDoctor?._id || '');
+  const [reason, setReason] = useState(admission.reason || '');
+  const [diagnosis, setDiagnosis] = useState(admission.diagnosis || '');
+  const [icd, setIcd] = useState(admission.icdCode || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const deptId = admission.department?.id || admission.department?._id;
+    activeDoctors(deptId).then(setDoctors).catch(() => setDoctors([]));
+  }, [admission]);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const saved = await updateAdmission(admission.id || admission._id, {
+        admittingDoctor: doctor, reason, diagnosis, icdCode: icd,
+      });
+      onSaved(saved);
+      toast.success('Admission updated');
+      onClose();
+    } catch (err) {
+      toast.error(err.message || 'Could not update admission');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const docOptions = doctors.map((d) => ({ value: d.id || d._id, label: `${d.fullName} · ${d.specialization}` }));
+
+  return (
+    <Modal open onClose={onClose} size="lg" title="Edit Admission Details"
+      footer={<><Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button><Button onClick={submit} loading={saving}>Save Changes</Button></>}>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <Select label="Admitting Doctor" options={docOptions} value={doctor} onChange={(e) => setDoctor(e.target.value)} />
+        <Input label="ICD-10 code" value={icd} onChange={(e) => setIcd(e.target.value)} placeholder="e.g. A09" />
+        <Input label="Reason" value={reason} onChange={(e) => setReason(e.target.value)} className="sm:col-span-2" />
+        <div className="sm:col-span-2">
+          <label className="label">Diagnosis</label>
+          <textarea rows={3} className="input resize-y" value={diagnosis} onChange={(e) => setDiagnosis(e.target.value)} />
+        </div>
+      </div>
+    </Modal>
   );
 }
 

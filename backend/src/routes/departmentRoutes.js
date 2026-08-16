@@ -8,6 +8,7 @@ import {
   createDepartmentSchema,
   updateDepartmentSchema,
   listDepartmentsQuerySchema,
+  exportDepartmentsQuerySchema,
 } from '../validators/departmentValidator.js';
 
 const router = Router();
@@ -16,6 +17,7 @@ router.use(authenticate);
 // Any authenticated user can read departments (needed for dropdowns everywhere).
 router.get('/', validate(listDepartmentsQuerySchema, 'query'), controller.list);
 router.get('/active', controller.active);
+router.get('/export', authorize(ROLES.ADMIN), validate(exportDepartmentsQuerySchema, 'query'), controller.exportDepartments);
 router.get('/:id', controller.get);
 
 // Only ADMIN manages departments.

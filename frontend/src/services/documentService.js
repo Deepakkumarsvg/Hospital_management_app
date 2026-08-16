@@ -20,6 +20,19 @@ export async function deletePatientDocument(patientId, docId) {
   return data;
 }
 
+// Open a document (PDF/image) inline in a new tab instead of downloading it.
+export async function viewPatientDocument(patientId, doc) {
+  const res = await fetch(`/api/patients/${patientId}/documents/${doc.id || doc._id}/download?inline=true`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Could not open document');
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, '_blank');
+  if (!win) throw new Error('Popup blocked — allow popups to view the document');
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
 // Build an authenticated download: fetch as blob (JWT is header-based, so a
 // plain <a href> wouldn't carry it) and trigger a save.
 export async function downloadPatientDocument(patientId, doc) {

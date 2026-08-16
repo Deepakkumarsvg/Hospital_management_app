@@ -1,5 +1,8 @@
 import { z } from 'zod';
 import { ROLE_LIST } from '../config/roles.js';
+// Admin-created accounts must clear the same bar as self-service ones —
+// otherwise the strong policy is trivially bypassed from the Users screen.
+import { passwordPolicy } from './authValidator.js';
 
 const phoneRegex = /^[0-9+\-\s()]{7,15}$/;
 
@@ -7,7 +10,7 @@ export const createUserSchema = z.object({
   name: z.string().trim().min(2, 'Name is required').max(100),
   email: z.string().trim().email('Valid email is required').toLowerCase(),
   phone: z.string().trim().regex(phoneRegex, 'Invalid phone').or(z.literal('')).optional(),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: passwordPolicy,
   role: z.enum(ROLE_LIST, { errorMap: () => ({ message: 'Valid role is required' }) }),
   department: z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid department').optional().nullable(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']).optional(),
@@ -16,7 +19,7 @@ export const createUserSchema = z.object({
 export const updateUserSchema = z.object({
   name: z.string().trim().min(2).max(100).optional(),
   phone: z.string().trim().regex(phoneRegex).or(z.literal('')).optional(),
-  password: z.string().min(6).optional(), // optional — only when changing
+  password: passwordPolicy.optional(), // optional — only when changing
   role: z.enum(ROLE_LIST).optional(),
   department: z.string().regex(/^[0-9a-fA-F]{24}$/).optional().nullable(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']).optional(),

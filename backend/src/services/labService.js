@@ -1,6 +1,7 @@
 import { LabTest } from '../models/LabTest.js';
 import { LabOrder, LAB_TRANSITIONS } from '../models/LabOrder.js';
 import { Patient } from '../models/Patient.js';
+import { Doctor } from '../models/Doctor.js';
 import { ApiError } from '../utils/ApiError.js';
 
 // ---------- Test master ----------
@@ -22,23 +23,54 @@ export async function updateTest(id, data) {
   return t;
 }
 export async function deleteTest(id) {
-  const t = await LabTest.findByIdAndDelete(id);
+  const t = await LabTest.findById(id);
   if (!t) throw ApiError.notFound('Test not found', 'LAB_TEST_NOT_FOUND');
+
+  const orderCount = await LabOrder.countDocuments({ 'items.test': id });
+  if (orderCount) {
+    throw ApiError.conflict(
+      'This test has been ordered before and cannot be deleted. Set its status to Inactive instead.',
+      'LAB_TEST_HAS_HISTORY',
+      { orders: orderCount }
+    );
+  }
+
+  await LabTest.findByIdAndDelete(id);
   return t;
 }
 
 // ---------- Orders ----------
 const POPULATE = [
   { path: 'patient', select: 'uhid firstName lastName gender dateOfBirth' },
-  { path: 'doctor', select: 'firstName lastName specialization' },
+  { path: 'doctor', select: 'firstName lastName specialization user' },
   { path: 'verifiedBy', select: 'name' },
+  { path: 'opdVisit', select: 'visitNo' },
 ];
 
-export async function listOrders({ page, limit, search, status, patient }) {
+// Order number is searchable directly, but patient/doctor are refs — resolve
+// matching ids first so a name/UHID search actually finds orders.
+async function searchFilter(search) {
+  if (!search) return {};
+  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const [patients, doctors] = await Promise.all([
+    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
+    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
+  ]);
+  return {
+    $or: [
+      { orderNo: rx },
+      { patient: { $in: patients.map((p) => p._id) } },
+      { doctor: { $in: doctors.map((d) => d._id) } },
+    ],
+  };
+}
+
+export async function listOrders({ page, limit, search, status, patient, doctor }) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (patient) filter.patient = patient;
-  if (search) filter.orderNo = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  if (doctor) filter.doctor = doctor;
+  Object.assign(filter, await searchFilter(search));
 
   const [items, total] = await Promise.all([
     LabOrder.find(filter).populate(POPULATE).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -105,6 +137,29 @@ export async function enterResults(id, items) {
   order.status = 'COMPLETED';
   await order.save();
   return order.populate(POPULATE);
+}
+
+// Flat rows for CSV/XLSX export.
+export async function labOrderRowsForExport({ search, status, patient, doctor }) {
+  const filter = {};
+  if (status && status !== 'ALL') filter.status = status;
+  if (patient) filter.patient = patient;
+  if (doctor) filter.doctor = doctor;
+  Object.assign(filter, await searchFilter(search));
+
+  const items = await LabOrder.find(filter).populate(POPULATE).sort({ createdAt: -1 });
+
+  return items.map((o) => ({
+    'Order No': o.orderNo,
+    Patient: o.patient ? `${o.patient.firstName} ${o.patient.lastName || ''}`.trim() : '',
+    'Patient UHID': o.patient?.uhid || '',
+    Doctor: o.doctor ? `${o.doctor.firstName} ${o.doctor.lastName || ''}`.trim() : '',
+    Tests: (o.items || []).map((i) => i.name).join(', '),
+    'Total Price': o.totalPrice,
+    Status: o.status,
+    'Ordered On': o.createdAt ? o.createdAt.toISOString().slice(0, 10) : '',
+    'Verified On': o.verifiedAt ? o.verifiedAt.toISOString().slice(0, 10) : '',
+  }));
 }
 
 export async function labStats() {

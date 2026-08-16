@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { ClipboardList } from 'lucide-react';
 import Badge from '../../components/ui/Badge.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
@@ -25,7 +25,13 @@ export default function PatientOpdVisits({ patientId }) {
   if (items.length === 0) return <EmptyState icon={ClipboardList} title="No OPD visits" description="This patient has no outpatient visits yet." />;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Link to={`/opd?patient=${patientId}`} className="text-sm text-muted hover:text-fg hover:underline">
+          View all in OPD →
+        </Link>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border">
       <table className="w-full min-w-[620px] text-sm">
         <thead>
           <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
@@ -53,6 +59,7 @@ export default function PatientOpdVisits({ patientId }) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

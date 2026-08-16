@@ -19,6 +19,7 @@ const radiologyOrderSchema = new mongoose.Schema(
     orderNo: { type: String, unique: true, index: true }, // RAD-YYYY-000001
     patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', default: null },
+    opdVisit: { type: mongoose.Schema.Types.ObjectId, ref: 'OPDVisit', default: null },
     test: { type: mongoose.Schema.Types.ObjectId, ref: 'RadiologyTest', default: null },
     testName: { type: String, required: true, trim: true },
     modality: { type: String, enum: MODALITIES, default: 'XRAY' },

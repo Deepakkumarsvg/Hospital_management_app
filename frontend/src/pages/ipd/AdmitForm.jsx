@@ -10,7 +10,9 @@ import { activeDepartments } from '../../services/departmentService.js';
 import { activeDoctors } from '../../services/doctorService.js';
 import { listWards, availableBeds } from '../../services/facilityService.js';
 
-export default function AdmitForm({ open, onClose, onSaved, presetPatient }) {
+// presetDoctor/presetDepartment/presetDiagnosis let callers (e.g. "Admit to
+// IPD" from an OPD consultation) pre-fill the form instead of starting blank.
+export default function AdmitForm({ open, onClose, onSaved, presetPatient, presetDoctor, presetDepartment, presetDiagnosis }) {
   const toast = useToast();
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -32,12 +34,18 @@ export default function AdmitForm({ open, onClose, onSaved, presetPatient }) {
     activeDepartments().then(setDepartments).catch(() => {});
     listWards().then((w) => setWards(w.filter((x) => x.status === 'ACTIVE'))).catch(() => {});
     setPatient(presetPatient || null);
-    setDepartment(''); setDoctor(''); setWard(''); setBed(''); setReason(''); setDiagnosis(''); setErrors({});
-  }, [open, presetPatient]);
+    setDepartment(presetDepartment || ''); setDoctor(presetDoctor || ''); setWard(''); setBed('');
+    setReason(''); setDiagnosis(presetDiagnosis || ''); setErrors({});
+  }, [open, presetPatient, presetDoctor, presetDepartment, presetDiagnosis]);
 
+  // Keep the current doctor selected if it's still valid for the reloaded
+  // list (so a preset survives this reload instead of being cleared).
   useEffect(() => {
     if (!department) { setDoctors([]); setDoctor(''); return; }
-    activeDoctors(department).then((l) => { setDoctors(l); setDoctor(''); }).catch(() => setDoctors([]));
+    activeDoctors(department).then((l) => {
+      setDoctors(l);
+      setDoctor((prev) => (prev && l.some((d) => (d.id || d._id) === prev) ? prev : ''));
+    }).catch(() => setDoctors([]));
   }, [department]);
 
   useEffect(() => {

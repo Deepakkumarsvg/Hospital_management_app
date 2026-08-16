@@ -7,5 +7,7 @@ import { ROLES } from '../config/roles.js';
 const router = Router();
 router.use(authenticate, authorize(ROLES.ADMIN));
 router.get('/', c.list);
+router.get('/facets', c.facets);
+router.get('/export', c.exportLogs);
 
 export default router;

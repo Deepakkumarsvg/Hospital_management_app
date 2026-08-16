@@ -54,6 +54,7 @@ api.interceptors.response.use(
       status,
       code: data?.error || 'NETWORK_ERROR',
       message: data?.message || error.message || 'Something went wrong',
+      details: data?.details,
     });
   }
 );

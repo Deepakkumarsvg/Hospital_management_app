@@ -32,13 +32,22 @@ export const book = asyncHandler(async (req, res) => {
   sendSuccess(res, { statusCode: 201, message: 'Appointment booked', data: appt });
 });
 
+// Ping the assigned doctor's login (if linked) about a patient-initiated change.
+function notifyDoctor(appt, title, message) {
+  if (!appt.doctor?.user) return;
+  notify({ user: appt.doctor.user, type: 'APPOINTMENT', title, message, link: '/appointments' });
+}
+
 export const cancel = asyncHandler(async (req, res) => {
   const appt = await service.cancel(req.patientId, req.params.id);
+  notifyDoctor(appt, 'Appointment cancelled', `${appt.appointmentNo} was cancelled by the patient`);
   sendSuccess(res, { message: 'Appointment cancelled', data: appt });
 });
 
 export const reschedule = asyncHandler(async (req, res) => {
   const appt = await service.reschedule(req.patientId, req.params.id, req.body);
+  notifyDoctor(appt, 'Appointment rescheduled',
+    `${appt.appointmentNo} moved to ${new Date(appt.date).toLocaleDateString()} ${appt.time} by the patient`);
   sendSuccess(res, { message: 'Appointment rescheduled', data: appt });
 });
 

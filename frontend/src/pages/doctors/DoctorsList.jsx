@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Plus, Stethoscope, Pencil, Trash2, Eye } from 'lucide-react';
+import { Search, Plus, Stethoscope, Pencil, Trash2, Eye, Download } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
@@ -11,7 +11,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import DoctorForm from './DoctorForm.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { listDoctors, deleteDoctor } from '../../services/doctorService.js';
+import { listDoctors, deleteDoctor, exportDoctors } from '../../services/doctorService.js';
 import { activeDepartments } from '../../services/departmentService.js';
 import { CAN_MANAGE_ADMIN } from '../../utils/constants.js';
 
@@ -32,6 +32,7 @@ export default function DoctorsList() {
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [exporting, setExporting] = useState(null); // 'csv' | 'xlsx' | null
   const debounceRef = useRef();
 
   useEffect(() => { activeDepartments().then(setDepartments).catch(() => {}); }, []);
@@ -72,18 +73,41 @@ export default function DoctorsList() {
   const { items, pagination } = data;
   const deptOptions = [{ value: '', label: 'All departments' }, ...departments.map((d) => ({ value: d.id || d._id, label: d.name }))];
 
+  const onExport = async (format) => {
+    setExporting(format);
+    try {
+      await exportDoctors({ search, department }, format);
+    } catch (err) {
+      toast.error(err.message || 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="card flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Doctors</h1>
           <p className="mt-0.5 text-sm text-muted">{pagination.total} doctor{pagination.total === 1 ? '' : 's'}</p>
         </div>
-        {canManage && (
-          <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
-            <Plus className="h-4 w-4" /> Add Doctor
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {canManage && (
+            <>
+              <Button variant="outline" loading={exporting === 'csv'} disabled={!!exporting} onClick={() => onExport('csv')}>
+                <Download className="h-4 w-4" /> CSV
+              </Button>
+              <Button variant="outline" loading={exporting === 'xlsx'} disabled={!!exporting} onClick={() => onExport('xlsx')}>
+                <Download className="h-4 w-4" /> Excel
+              </Button>
+            </>
+          )}
+          {canManage && (
+            <Button onClick={() => { setEditing(null); setFormOpen(true); }}>
+              <Plus className="h-4 w-4" /> Add Doctor
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row">

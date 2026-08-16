@@ -17,6 +17,7 @@ export const updateRadTestSchema = createRadTestSchema.partial();
 export const createRadOrderSchema = z.object({
   patient: objectId('patient'),
   doctor: objectId('doctor').optional().nullable(),
+  opdVisit: objectId('opdVisit').optional().nullable(),
   test: objectId('test').optional().nullable(),
   testName: z.string().trim().min(1).max(120).optional(),
   modality: z.enum(MODALITIES).optional(),
@@ -39,4 +40,19 @@ export const listRadQuerySchema = z.object({
   search: z.string().trim().optional().default(''),
   status: z.enum([...RAD_STATUSES, 'ALL']).optional().default('ALL'),
   patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  doctor: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+});
+
+export const exportRadQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  status: z.enum([...RAD_STATUSES, 'ALL']).optional().default('ALL'),
+  patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  doctor: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});
+
+export const listRadTestsQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  modality: z.enum(MODALITIES).optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
 });

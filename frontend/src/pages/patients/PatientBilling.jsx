@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Receipt } from 'lucide-react';
 import Badge from '../../components/ui/Badge.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
@@ -25,7 +25,13 @@ export default function PatientBilling({ patientId }) {
   if (items.length === 0) return <EmptyState icon={Receipt} title="No invoices" description="This patient has no invoices yet." />;
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Link to={`/billing?patient=${patientId}`} className="text-sm text-muted hover:text-fg hover:underline">
+          View all in Billing →
+        </Link>
+      </div>
+      <div className="overflow-hidden rounded-lg border border-border">
       <table className="w-full min-w-[560px] text-sm">
         <thead><tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
           <th className="px-4 py-2 font-medium">Invoice No</th><th className="px-4 py-2 font-medium">Total</th>
@@ -48,6 +54,7 @@ export default function PatientBilling({ patientId }) {
           })}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

@@ -41,3 +41,10 @@ export const listIpdQuerySchema = z.object({
   status: z.enum(['ADMITTED', 'DISCHARGED', 'CANCELLED', 'ALL']).optional().default('ALL'),
   patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
 });
+
+export const exportIpdQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  status: z.enum(['ADMITTED', 'DISCHARGED', 'CANCELLED', 'ALL']).optional().default('ALL'),
+  patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});

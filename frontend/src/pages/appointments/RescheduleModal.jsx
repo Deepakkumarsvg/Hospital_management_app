@@ -1,11 +1,20 @@
 import { useEffect, useState } from 'react';
+import { AlertTriangle } from 'lucide-react';
 import Modal from '../../components/ui/Modal.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Button from '../../components/ui/Button.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { updateAppointment } from '../../services/appointmentService.js';
+import { getDoctor } from '../../services/doctorService.js';
 import { toDateInput, APPOINTMENT_TYPE_OPTIONS } from '../../utils/constants.js';
+
+// Weekday letters used by Doctor.availability, indexed by JS Date#getDay() (0=Sun).
+const DOW = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
+function weekdayOf(dateStr) {
+  if (!dateStr) return null;
+  return DOW[new Date(`${dateStr}T00:00:00`).getDay()];
+}
 
 // Edit date / time / type / reason of an existing appointment (reschedule).
 export default function RescheduleModal({ open, onClose, appointment, onSaved }) {
@@ -15,6 +24,7 @@ export default function RescheduleModal({ open, onClose, appointment, onSaved })
   const [type, setType] = useState('NEW');
   const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [doctorAvailability, setDoctorAvailability] = useState(null);
 
   useEffect(() => {
     if (!open || !appointment) return;
@@ -22,7 +32,13 @@ export default function RescheduleModal({ open, onClose, appointment, onSaved })
     setTime(appointment.time || '');
     setType(appointment.type || 'NEW');
     setReason(appointment.reason || '');
+    const doctorId = appointment.doctor?.id || appointment.doctor?._id;
+    if (doctorId) {
+      getDoctor(doctorId).then((d) => setDoctorAvailability(d.availability || [])).catch(() => setDoctorAvailability(null));
+    }
   }, [open, appointment]);
+
+  const offDay = doctorAvailability && date && !doctorAvailability.some((a) => a.day === weekdayOf(date));
 
   const onSubmit = async (e) => {
     e.preventDefault();
@@ -54,6 +70,11 @@ export default function RescheduleModal({ open, onClose, appointment, onSaved })
       <form id="reschedule-form" onSubmit={onSubmit} className="grid grid-cols-1 gap-4 sm:grid-cols-2" noValidate>
         <Input type="date" label="Date" value={date} onChange={(e) => setDate(e.target.value)} />
         <Input type="time" label="Time" value={time} onChange={(e) => setTime(e.target.value)} />
+        {offDay && (
+          <p className="sm:col-span-2 -mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" /> Doctor isn't scheduled on {weekdayOf(date)}s per their weekly availability.
+          </p>
+        )}
         <Select label="Type" options={APPOINTMENT_TYPE_OPTIONS} value={type} onChange={(e) => setType(e.target.value)} />
         <div className="sm:col-span-2">
           <label className="label">Reason / Notes</label>

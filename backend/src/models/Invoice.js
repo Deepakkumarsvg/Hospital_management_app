@@ -8,6 +8,8 @@ export const INVOICE_ITEM_CATEGORIES = [
 ];
 export const INVOICE_STATUSES = ['PENDING', 'PARTIAL', 'PAID', 'REFUNDED', 'CANCELLED'];
 
+export const INVOICE_ITEM_SOURCES = ['LAB_ORDER', 'RAD_ORDER', 'DISPENSE'];
+
 const invoiceItemSchema = new mongoose.Schema(
   {
     category: { type: String, enum: INVOICE_ITEM_CATEGORIES, default: 'OTHER' },
@@ -15,6 +17,10 @@ const invoiceItemSchema = new mongoose.Schema(
     quantity: { type: Number, min: 1, default: 1 },
     unitPrice: { type: Number, min: 0, default: 0 },
     amount: { type: Number, min: 0, default: 0 },
+    // Set when this line came from a "suggested charge" (lab/rad/pharmacy) —
+    // lets billingSuggestions() avoid offering the same charge twice.
+    sourceType: { type: String, enum: INVOICE_ITEM_SOURCES, default: null },
+    sourceId: { type: mongoose.Schema.Types.ObjectId, default: null },
   },
   { _id: false }
 );

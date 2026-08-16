@@ -15,9 +15,24 @@ const employeeSchema = new mongoose.Schema(
     joiningDate: { type: Date, default: Date.now },
     salary: { type: Number, min: 0, default: 0 },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+    // Set when someone leaves — INACTIVE alone doesn't say when or why.
+    exitDate: { type: Date, default: null },
+    exitReason: { type: String, trim: true, default: '' },
+    // Annual entitlement, decremented as approved (non-unpaid) leave is taken.
+    leaveBalance: {
+      CASUAL: { type: Number, min: 0, default: 12 },
+      SICK: { type: Number, min: 0, default: 12 },
+      EARNED: { type: Number, min: 0, default: 15 },
+    },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// Email/phone are optional, so a plain unique index would collide across the
+// many employees who leave them blank — only enforce uniqueness once a value
+// is actually present.
+employeeSchema.index({ email: 1 }, { unique: true, partialFilterExpression: { email: { $gt: '' } } });
+employeeSchema.index({ phone: 1 }, { unique: true, partialFilterExpression: { phone: { $gt: '' } } });
 
 employeeSchema.pre('save', async function (next) {
   if (this.employeeCode) return next();

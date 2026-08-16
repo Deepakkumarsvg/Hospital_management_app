@@ -36,10 +36,18 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   sendSuccess(res, { statusCode: 201, message: 'Document uploaded', data: doc });
 });
 
-// GET /api/patients/:id/documents/:docId/download
+// GET /api/patients/:id/documents/:docId/download[?inline=true]
 export const downloadDocument = asyncHandler(async (req, res) => {
   const doc = await PatientDocument.findOne({ _id: req.params.docId, patient: req.params.id });
   if (!doc) throw ApiError.notFound('Document not found', 'DOCUMENT_NOT_FOUND');
+
+  // inline=true lets the frontend open PDFs/images in a new tab instead of
+  // forcing a save-to-disk prompt.
+  if (req.query.inline === 'true') {
+    res.setHeader('Content-Type', doc.mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.originalName)}"`);
+    return res.sendFile(resolvePath(doc.storageKey));
+  }
 
   res.download(resolvePath(doc.storageKey), doc.originalName);
 });

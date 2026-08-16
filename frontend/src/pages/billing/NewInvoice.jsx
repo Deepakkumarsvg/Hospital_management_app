@@ -35,7 +35,10 @@ export default function NewInvoice({ open, onClose, onCreated, presetPatient }) 
   const addSuggested = () => {
     setLines((prev) => {
       const base = prev.filter((l) => l.description.trim());
-      return [...base, ...suggestions.map((s) => ({ category: s.category, description: s.description, quantity: 1, unitPrice: s.unitPrice }))];
+      return [...base, ...suggestions.map((s) => ({
+        category: s.category, description: s.description, quantity: 1, unitPrice: s.unitPrice,
+        sourceType: s.sourceType, sourceId: s.sourceId,
+      }))];
     });
     toast.success(`Added ${suggestions.length} charge${suggestions.length === 1 ? '' : 's'}`);
   };
@@ -50,7 +53,10 @@ export default function NewInvoice({ open, onClose, onCreated, presetPatient }) 
     const er = {};
     if (!patient) er.patient = 'Select a patient';
     const items = lines.filter((l) => l.description.trim() && Number(l.unitPrice) >= 0)
-      .map((l) => ({ category: l.category, description: l.description, quantity: Number(l.quantity) || 1, unitPrice: Number(l.unitPrice) || 0 }));
+      .map((l) => ({
+        category: l.category, description: l.description, quantity: Number(l.quantity) || 1, unitPrice: Number(l.unitPrice) || 0,
+        sourceType: l.sourceType || undefined, sourceId: l.sourceId || undefined,
+      }));
     if (items.length === 0) er.items = 'Add at least one line item';
     setErrors(er);
     if (Object.keys(er).length) return;
@@ -94,14 +100,19 @@ export default function NewInvoice({ open, onClose, onCreated, presetPatient }) 
         </div>
 
         <div className="grid grid-cols-2 gap-4 border-t border-border pt-4 sm:grid-cols-4">
-          <Input type="number" step="0.01" label="Discount ₹" value={discount} onChange={(e) => setDiscount(e.target.value)} />
-          <Input type="number" step="0.01" label="Tax %" value={taxPercent} onChange={(e) => setTaxPercent(e.target.value)} />
+          <Input type="number" min="0" step="0.01" label="Discount ₹" value={discount} onChange={(e) => setDiscount(e.target.value)} />
+          <Input type="number" min="0" max="100" step="0.01" label="Tax %" value={taxPercent} onChange={(e) => setTaxPercent(e.target.value)} />
           <div className="col-span-2 rounded-lg bg-surface p-3 text-sm">
             <div className="flex justify-between"><span className="text-muted">Subtotal</span><span className="tabular-nums">{money(subtotal)}</span></div>
             <div className="flex justify-between"><span className="text-muted">Discount</span><span className="tabular-nums">− {money(Number(discount) || 0)}</span></div>
             <div className="flex justify-between"><span className="text-muted">Tax</span><span className="tabular-nums">+ {money(tax)}</span></div>
             <div className="mt-1 flex justify-between border-t border-border pt-1 font-semibold"><span>Grand Total</span><span className="tabular-nums">{money(grandTotal)}</span></div>
           </div>
+          {Number(discount) > subtotal && (
+            <p className="col-span-2 sm:col-span-4 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+              Discount exceeds the subtotal — grand total will be capped at ₹0 before tax.
+            </p>
+          )}
         </div>
       </form>
     </Modal>

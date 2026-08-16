@@ -1,7 +1,9 @@
 import { RadiologyTest } from '../models/RadiologyTest.js';
 import { RadiologyOrder, RAD_TRANSITIONS } from '../models/RadiologyOrder.js';
 import { Patient } from '../models/Patient.js';
+import { Doctor } from '../models/Doctor.js';
 import { ApiError } from '../utils/ApiError.js';
+import { notify } from './notificationService.js';
 
 // ---------- Test master ----------
 export async function listTests({ search, modality, status } = {}) {
@@ -22,23 +24,54 @@ export async function updateTest(id, data) {
   return t;
 }
 export async function deleteTest(id) {
-  const t = await RadiologyTest.findByIdAndDelete(id);
+  const t = await RadiologyTest.findById(id);
   if (!t) throw ApiError.notFound('Test not found', 'RAD_TEST_NOT_FOUND');
+
+  const orderCount = await RadiologyOrder.countDocuments({ test: id });
+  if (orderCount) {
+    throw ApiError.conflict(
+      'This test has been ordered before and cannot be deleted. Set its status to Inactive instead.',
+      'RAD_TEST_HAS_HISTORY',
+      { orders: orderCount }
+    );
+  }
+
+  await RadiologyTest.findByIdAndDelete(id);
   return t;
 }
 
 // ---------- Orders ----------
 const POPULATE = [
   { path: 'patient', select: 'uhid firstName lastName gender dateOfBirth' },
-  { path: 'doctor', select: 'firstName lastName specialization' },
+  { path: 'doctor', select: 'firstName lastName specialization user' },
   { path: 'reportedBy', select: 'name' },
+  { path: 'opdVisit', select: 'visitNo' },
 ];
 
-export async function listOrders({ page, limit, search, status, patient }) {
+// Order number is searchable directly, but patient/doctor are refs — resolve
+// matching ids first so a name/UHID search actually finds orders.
+async function searchFilter(search) {
+  if (!search) return {};
+  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const [patients, doctors] = await Promise.all([
+    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
+    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
+  ]);
+  return {
+    $or: [
+      { orderNo: rx },
+      { patient: { $in: patients.map((p) => p._id) } },
+      { doctor: { $in: doctors.map((d) => d._id) } },
+    ],
+  };
+}
+
+export async function listOrders({ page, limit, search, status, patient, doctor }) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (patient) filter.patient = patient;
-  if (search) filter.orderNo = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  if (doctor) filter.doctor = doctor;
+  Object.assign(filter, await searchFilter(search));
 
   const [items, total] = await Promise.all([
     RadiologyOrder.find(filter).populate(POPULATE).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -68,7 +101,7 @@ export async function createOrder(data, userId) {
   if (!testName) throw ApiError.badRequest('Test name is required', 'NO_TEST');
 
   const order = new RadiologyOrder({
-    patient: data.patient, doctor: data.doctor || null, test: data.test || null,
+    patient: data.patient, doctor: data.doctor || null, opdVisit: data.opdVisit || null, test: data.test || null,
     testName, modality: modality || 'XRAY', price, notes: data.notes || '', createdBy: userId,
   });
   await order.save();
@@ -100,7 +133,41 @@ export async function submitReport(id, { findings, impression }, userId) {
   order.reportedBy = userId;
   order.status = 'REPORTED';
   await order.save();
-  return order.populate(POPULATE);
+  const populated = await order.populate(POPULATE);
+
+  if (populated.doctor?.user) {
+    notify({
+      user: populated.doctor.user, type: 'RADIOLOGY', title: 'Radiology report ready',
+      message: `${populated.orderNo} · ${populated.patient?.firstName || 'Patient'}'s ${populated.testName} report is ready.`,
+      link: `/radiology/${populated._id}`,
+    });
+  }
+
+  return populated;
+}
+
+// Flat rows for CSV/XLSX export.
+export async function radOrderRowsForExport({ search, status, patient, doctor }) {
+  const filter = {};
+  if (status && status !== 'ALL') filter.status = status;
+  if (patient) filter.patient = patient;
+  if (doctor) filter.doctor = doctor;
+  Object.assign(filter, await searchFilter(search));
+
+  const items = await RadiologyOrder.find(filter).populate(POPULATE).sort({ createdAt: -1 });
+
+  return items.map((o) => ({
+    'Order No': o.orderNo,
+    Patient: o.patient ? `${o.patient.firstName} ${o.patient.lastName || ''}`.trim() : '',
+    'Patient UHID': o.patient?.uhid || '',
+    Doctor: o.doctor ? `${o.doctor.firstName} ${o.doctor.lastName || ''}`.trim() : '',
+    Investigation: o.testName,
+    Modality: o.modality,
+    Price: o.price,
+    Status: o.status,
+    'Ordered On': o.createdAt ? o.createdAt.toISOString().slice(0, 10) : '',
+    'Reported On': o.reportedAt ? o.reportedAt.toISOString().slice(0, 10) : '',
+  }));
 }
 
 export async function radStats() {

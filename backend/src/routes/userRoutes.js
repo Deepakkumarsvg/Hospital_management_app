@@ -17,6 +17,7 @@ router.use(authenticate, authorize(ROLES.ADMIN));
 
 router.get('/', validate(listUsersQuerySchema, 'query'), userController.listUsers);
 router.get('/roles', userController.listRoles);
+router.get('/stats', userController.stats);
 router.get('/:id', userController.getUser);
 router.post('/', validate(createUserSchema), userController.createUser);
 router.put('/:id', validate(updateUserSchema), userController.updateUser);

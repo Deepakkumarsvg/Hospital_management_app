@@ -17,3 +17,18 @@ export async function logout() {
     // ignore; logout is best-effort on a stateless JWT
   }
 }
+
+export async function changePassword(currentPassword, newPassword) {
+  const { data } = await api.post('/auth/change-password', { currentPassword, newPassword });
+  return data;
+}
+
+export async function forgotPassword(email) {
+  const { data } = await api.post('/auth/forgot-password', { email });
+  return data;
+}
+
+export async function resetPassword(token, newPassword) {
+  const { data } = await api.post('/auth/reset-password', { token, newPassword });
+  return data;
+}

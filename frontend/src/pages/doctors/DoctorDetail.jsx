@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { ArrowLeft, Pencil, Stethoscope, Phone, Mail, IndianRupee, Award, CalendarDays } from 'lucide-react';
+import { ArrowLeft, Pencil, Stethoscope, Phone, Mail, IndianRupee, Award, CalendarDays, CalendarCheck, CalendarClock } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
@@ -9,7 +9,8 @@ import DoctorForm from './DoctorForm.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getDoctor } from '../../services/doctorService.js';
-import { CAN_MANAGE_ADMIN, WEEKDAYS } from '../../utils/constants.js';
+import { listAppointments } from '../../services/appointmentService.js';
+import { CAN_MANAGE_ADMIN, WEEKDAYS, toDateInput } from '../../utils/constants.js';
 
 function Field({ label, value }) {
   return (
@@ -30,6 +31,7 @@ export default function DoctorDetail() {
   const [doctor, setDoctor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
+  const [apptLoad, setApptLoad] = useState({ total: null, today: null });
 
   const load = async () => {
     setLoading(true);
@@ -44,6 +46,17 @@ export default function DoctorDetail() {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
+
+  // Doctor's appointment load — total on record + today's count.
+  useEffect(() => {
+    if (!id) return;
+    Promise.all([
+      listAppointments({ doctor: id, limit: 1 }),
+      listAppointments({ doctor: id, date: toDateInput(new Date().toISOString()), limit: 50 }),
+    ])
+      .then(([totalRes, todayRes]) => setApptLoad({ total: totalRes.pagination.total, today: todayRes.items.length }))
+      .catch(() => setApptLoad({ total: null, today: null }));
+  }, [id]);
 
   if (loading) return <Spinner full />;
   if (!doctor) return null;
@@ -80,6 +93,11 @@ export default function DoctorDetail() {
         <Card className="!p-4"><p className="flex items-center gap-1.5 text-xs text-muted"><Stethoscope className="h-3.5 w-3.5" /> Reg No</p><p className="mt-1 text-sm font-mono font-semibold">{doctor.registrationNo}</p></Card>
       </div>
 
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Card className="!p-4"><p className="flex items-center gap-1.5 text-xs text-muted"><CalendarCheck className="h-3.5 w-3.5" /> Today's Appointments</p><p className="mt-1 text-lg font-semibold">{apptLoad.today ?? '—'}</p></Card>
+        <Card className="!p-4"><p className="flex items-center gap-1.5 text-xs text-muted"><CalendarClock className="h-3.5 w-3.5" /> Total Appointments</p><p className="mt-1 text-lg font-semibold">{apptLoad.total ?? '—'}</p></Card>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card>
           <h2 className="mb-4 text-sm font-semibold">Profile</h2>
@@ -88,6 +106,9 @@ export default function DoctorDetail() {
             <Field label="Specialization" value={doctor.specialization} />
             <Field label="Department" value={doctor.department?.name} />
             <Field label="Email" value={doctor.email} />
+            <div className="col-span-2">
+              <Field label="Linked Login" value={doctor.user ? `${doctor.user.name} · ${doctor.user.email}` : 'Not linked'} />
+            </div>
           </div>
         </Card>
         <Card>

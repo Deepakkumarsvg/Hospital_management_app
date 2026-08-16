@@ -1,4 +1,5 @@
 import PDFDocument from 'pdfkit';
+import { resolvePath } from '../config/storage.js';
 
 // Shared black & white document styling — mirrors the app's monochrome theme.
 const INK = '#111111';
@@ -26,6 +27,13 @@ function streamToResponse(doc, res, filename) {
 // Draw the hospital letterhead; returns the y just below it.
 function drawHeader(doc, settings) {
   const s = settings || {};
+  if (s.logo?.storageKey) {
+    try {
+      doc.image(resolvePath(s.logo.storageKey), 480, 40, { fit: [65, 65] });
+    } catch {
+      // Missing/corrupt logo file shouldn't break the document — skip it.
+    }
+  }
   doc.fillColor(INK).fontSize(20).font('Helvetica-Bold')
     .text(s.hospitalName || 'Hospital', 50, 50);
   if (s.tagline) {
@@ -133,9 +141,13 @@ export function generateInvoicePdf(res, { invoice, payments = [], settings }) {
     doc.font('Helvetica').fontSize(8).fillColor(MUTED);
     payments.forEach((pay) => {
       if (y > 760) { doc.addPage(); y = 60; }
-      doc.text(`${fmtDate(pay.createdAt)}  ·  ${pay.receiptNo || ''}  ·  ${pay.method}  ·  ${money(settings, pay.amount)}`, 50, y);
+      const isRefund = pay.type === 'REFUND';
+      const amt = `${isRefund ? '− ' : ''}${money(settings, pay.amount)}`;
+      doc.fillColor(isRefund ? '#b91c1c' : MUTED);
+      doc.text(`${fmtDate(pay.createdAt)}  ·  ${pay.receiptNo || ''}  ·  ${isRefund ? 'REFUND' : pay.method}  ·  ${amt}`, 50, y);
       y += 13;
     });
+    doc.fillColor(MUTED);
   }
 
   // Footer.
@@ -287,6 +299,375 @@ export function generateDischargeSummaryPdf(res, { admission, settings }) {
   doc.fontSize(9).font('Helvetica').fillColor(MUTED)
     .text('_______________________', 380, 760)
     .text(`Dr. ${[d.firstName, d.lastName].filter(Boolean).join(' ')}`, 380, 776, { width: 165 });
+
+  doc.end();
+}
+
+// ---------------------------------------------------------------------------
+// LAB REPORT (from a Lab order)
+// ---------------------------------------------------------------------------
+export function generateLabReportPdf(res, { order, settings }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  streamToResponse(doc, res, `${order.orderNo || 'lab-report'}.pdf`);
+
+  let y = drawHeader(doc, settings);
+  y = drawTitle(doc, 'LABORATORY REPORT', y);
+
+  const p = order.patient || {};
+  const d = order.doctor || {};
+  const patientName = [p.firstName, p.lastName].filter(Boolean).join(' ') || '—';
+  const age = p.dateOfBirth ? Math.floor((Date.now() - new Date(p.dateOfBirth).getTime()) / 3.15576e10) : null;
+
+  y = drawInfoGrid(doc, [
+    ['Order No', order.orderNo],
+    ['Date', fmtDate(order.createdAt)],
+    ['Patient', patientName],
+    ['UHID', p.uhid],
+    ['Age / Sex', [age != null ? `${age}y` : '', p.gender].filter(Boolean).join(' / ')],
+    ['Referred by', d.firstName ? `Dr. ${[d.firstName, d.lastName].filter(Boolean).join(' ')}` : '—'],
+  ], y);
+
+  // Results table.
+  y += 6;
+  doc.fontSize(9).font('Helvetica-Bold').fillColor(INK);
+  doc.text('Test', 50, y);
+  doc.text('Result', 260, y);
+  doc.text('Unit', 340, y);
+  doc.text('Reference', 400, y);
+  doc.text('Flag', 500, y);
+  y += 14;
+  doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
+  y += 6;
+
+  const ABNORMAL_COLOR = '#b91c1c';
+  (order.items || []).forEach((it) => {
+    if (y > 720) { doc.addPage(); y = 60; }
+    const abnormal = it.flag && it.flag !== 'NORMAL';
+    doc.font('Helvetica').fillColor(INK).text(it.name, 50, y, { width: 200 });
+    doc.font(abnormal ? 'Helvetica-Bold' : 'Helvetica').fillColor(abnormal ? ABNORMAL_COLOR : INK).text(it.result || '—', 260, y, { width: 70 });
+    doc.font('Helvetica').fillColor(MUTED).text(it.unit || '—', 340, y, { width: 55 });
+    doc.text(it.referenceRange || '—', 400, y, { width: 95 });
+    doc.fillColor(abnormal ? ABNORMAL_COLOR : MUTED).text(it.flag || '', 500, y, { width: 45 });
+    y += 16;
+  });
+
+  doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
+  y += 14;
+
+  if (order.notes) {
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(INK).text('Notes', 50, y); y += 14;
+    doc.font('Helvetica').fillColor(INK).text(order.notes, 50, y, { width: 495 });
+    y = doc.y + 10;
+  }
+
+  doc.fontSize(9).font('Helvetica').fillColor(MUTED)
+    .text(order.verifiedBy?.name ? `Verified by ${order.verifiedBy.name} on ${fmtDate(order.verifiedAt)}` : 'Pending verification', 50, 760)
+    .text('_______________________', 380, 740)
+    .text('Authorized Signatory', 380, 756);
+
+  doc.end();
+}
+
+// ---------------------------------------------------------------------------
+// RADIOLOGY REPORT (from a Radiology order)
+// ---------------------------------------------------------------------------
+export function generateRadiologyReportPdf(res, { order, settings }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  streamToResponse(doc, res, `${order.orderNo || 'radiology-report'}.pdf`);
+
+  let y = drawHeader(doc, settings);
+  y = drawTitle(doc, 'RADIOLOGY REPORT', y);
+
+  const p = order.patient || {};
+  const d = order.doctor || {};
+  const patientName = [p.firstName, p.lastName].filter(Boolean).join(' ') || '—';
+  const age = p.dateOfBirth ? Math.floor((Date.now() - new Date(p.dateOfBirth).getTime()) / 3.15576e10) : null;
+
+  y = drawInfoGrid(doc, [
+    ['Order No', order.orderNo],
+    ['Date', fmtDate(order.createdAt)],
+    ['Patient', patientName],
+    ['UHID', p.uhid],
+    ['Age / Sex', [age != null ? `${age}y` : '', p.gender].filter(Boolean).join(' / ')],
+    ['Referred by', d.firstName ? `Dr. ${[d.firstName, d.lastName].filter(Boolean).join(' ')}` : '—'],
+    ['Investigation', `${order.testName}${order.modality ? ` (${order.modality})` : ''}`],
+  ], y);
+
+  y += 6;
+  const block = (label, text) => {
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(INK).text(label, 50, y); y += 14;
+    doc.font('Helvetica').fillColor(INK).text(text || '—', 50, y, { width: 495 });
+    y = doc.y + 12;
+  };
+  block('Findings', order.findings);
+  block('Impression', order.impression);
+
+  if (order.notes) {
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(INK).text('Clinical Notes', 50, y); y += 14;
+    doc.font('Helvetica').fillColor(INK).text(order.notes, 50, y, { width: 495 });
+    y = doc.y + 10;
+  }
+
+  doc.fontSize(9).font('Helvetica').fillColor(MUTED)
+    .text(order.reportedBy?.name ? `Reported by ${order.reportedBy.name} on ${fmtDate(order.reportedAt)}` : 'Pending report', 50, 760)
+    .text('_______________________', 380, 740)
+    .text('Authorized Signatory', 380, 756);
+
+  doc.end();
+}
+
+// ---------------------------------------------------------------------------
+// HOSPITAL SUMMARY REPORT
+// ---------------------------------------------------------------------------
+export function generateReportSummaryPdf(res, { summary, settings }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const rangeLabel = summary.range?.from || summary.range?.to
+    ? `${summary.range.from || 'start'} to ${summary.range.to || 'today'}`
+    : 'all-time';
+  streamToResponse(doc, res, `hms-summary-${rangeLabel}.pdf`);
+
+  let y = drawHeader(doc, settings);
+  y = drawTitle(doc, 'HOSPITAL SUMMARY REPORT', y);
+  doc.fontSize(9).font('Helvetica').fillColor(MUTED).text(`Range: ${rangeLabel}`, 50, y);
+  y += 20;
+
+  const section = (title) => {
+    if (y > 700) { doc.addPage(); y = 60; }
+    doc.fontSize(11).font('Helvetica-Bold').fillColor(INK).text(title, 50, y);
+    y += 6;
+    doc.moveTo(50, y + 10).lineTo(545, y + 10).strokeColor(LINE).stroke();
+    y += 18;
+  };
+  const kv = (rows) => { y = drawInfoGrid(doc, rows, y); y += 6; };
+
+  const t = summary.totals;
+  section('Clinical Activity');
+  kv([
+    ['Patients', t.patients], ['OPD Visits', t.opdVisits],
+    ['IPD Admissions', t.ipdAdmissions], ['Current Admissions', t.currentAdmissions],
+    ['Lab Orders', t.labOrders], ['Radiology Orders', t.radOrders],
+    ['Active Doctors', t.activeDoctors], ['Bed Occupancy', `${summary.beds.occupancyRate}%`],
+  ]);
+
+  section('Revenue');
+  kv([
+    ['Billed', money(settings, summary.revenue.billed)], ['Collected', money(settings, summary.revenue.collected)],
+    ['Due', money(settings, summary.revenue.due)], ['Invoices', summary.revenue.invoices],
+  ]);
+
+  section('Operations');
+  kv([
+    ['Active Medicines', summary.pharmacy.activeMedicines], ['Low Stock (Pharmacy)', summary.pharmacy.lowStock],
+    ['Dispense Revenue', money(settings, summary.pharmacy.dispenseRevenue)],
+    ['Low Stock (Inventory)', summary.inventory.lowStock], ['Open Purchase Orders', summary.inventory.openPOs],
+    ['Ambulance Trips', summary.ambulance.trips], ['Ambulance Revenue', money(settings, summary.ambulance.tripRevenue)],
+  ]);
+
+  section('Human Resources');
+  kv([
+    ['Active Staff', summary.hr.activeStaff], ['Pending Leaves', summary.hr.pendingLeaves],
+    ['Payslips', summary.hr.payslips], ['Payroll Cost', money(settings, summary.hr.payrollCost)],
+    ['Payroll Paid', money(settings, summary.hr.payrollPaid)],
+  ]);
+
+  for (const [group, rows] of Object.entries(summary.breakdowns)) {
+    if (!rows.length) continue;
+    section(`${group.charAt(0).toUpperCase()}${group.slice(1)} by Status`);
+    kv(rows.map((r) => [r.status, r.count]));
+  }
+
+  doc.end();
+}
+
+// ---------------------------------------------------------------------------
+// PHARMACY DISPENSE RECEIPT
+// ---------------------------------------------------------------------------
+export function generateDispenseReceiptPdf(res, { dispense, settings }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  streamToResponse(doc, res, `${dispense.dispenseNo || 'dispense-receipt'}.pdf`);
+
+  let y = drawHeader(doc, settings);
+  y = drawTitle(doc, 'PHARMACY RECEIPT', y);
+
+  const p = dispense.patient || {};
+  const d = dispense.doctor || {};
+  const patientName = p.firstName ? [p.firstName, p.lastName].filter(Boolean).join(' ') : 'Walk-in';
+
+  y = drawInfoGrid(doc, [
+    ['Dispense No', dispense.dispenseNo],
+    ['Date', fmtDate(dispense.createdAt)],
+    ['Patient', patientName],
+    ['UHID', p.uhid || '—'],
+    ['Prescribed by', d.firstName ? `Dr. ${[d.firstName, d.lastName].filter(Boolean).join(' ')}` : '—'],
+    ['Dispensed by', dispense.dispensedBy?.name || '—'],
+  ], y);
+
+  y += 6;
+  const cols = { desc: 50, qty: 350, rate: 410, amt: 470 };
+  doc.fontSize(9).font('Helvetica-Bold').fillColor(INK);
+  doc.text('Medicine', cols.desc, y);
+  doc.text('Qty', cols.qty, y, { width: 40, align: 'right' });
+  doc.text('Rate', cols.rate, y, { width: 60, align: 'right' });
+  doc.text('Amount', cols.amt, y, { width: 75, align: 'right' });
+  y += 14;
+  doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
+  y += 6;
+
+  doc.font('Helvetica').fillColor(INK);
+  (dispense.items || []).forEach((it) => {
+    if (y > 720) { doc.addPage(); y = 60; }
+    doc.text(it.name, cols.desc, y, { width: 290 });
+    doc.text(String(it.quantity), cols.qty, y, { width: 40, align: 'right' });
+    doc.text(money(settings, it.sellingPrice), cols.rate, y, { width: 60, align: 'right' });
+    doc.text(money(settings, it.lineTotal), cols.amt, y, { width: 75, align: 'right' });
+    y += 16;
+  });
+
+  doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
+  y += 10;
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text('Total', 360, y, { width: 100, align: 'right' });
+  doc.text(money(settings, dispense.total), 465, y, { width: 80, align: 'right' });
+
+  doc.end();
+}
+
+// ---------------------------------------------------------------------------
+// PURCHASE ORDER
+// ---------------------------------------------------------------------------
+export function generatePurchaseOrderPdf(res, { po, settings }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  streamToResponse(doc, res, `${po.poNo || 'purchase-order'}.pdf`);
+
+  let y = drawHeader(doc, settings);
+  y = drawTitle(doc, 'PURCHASE ORDER', y);
+
+  const v = po.vendor || {};
+  y = drawInfoGrid(doc, [
+    ['PO No', po.poNo],
+    ['Date', fmtDate(po.orderedAt || po.createdAt)],
+    ['Vendor', v.name],
+    ['Vendor Code', v.code],
+    ['Status', po.status],
+  ], y);
+
+  y += 6;
+  const cols = { desc: 50, qty: 320, rate: 400, amt: 470 };
+  doc.fontSize(9).font('Helvetica-Bold').fillColor(INK);
+  doc.text('Item', cols.desc, y);
+  doc.text('Qty', cols.qty, y, { width: 50, align: 'right' });
+  doc.text('Rate', cols.rate, y, { width: 60, align: 'right' });
+  doc.text('Amount', cols.amt, y, { width: 75, align: 'right' });
+  y += 14;
+  doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
+  y += 6;
+
+  doc.font('Helvetica').fillColor(INK);
+  (po.items || []).forEach((it) => {
+    if (y > 720) { doc.addPage(); y = 60; }
+    doc.text(it.name, cols.desc, y, { width: 260 });
+    doc.text(String(it.quantity), cols.qty, y, { width: 50, align: 'right' });
+    doc.text(money(settings, it.unitPrice), cols.rate, y, { width: 60, align: 'right' });
+    doc.text(money(settings, it.lineTotal), cols.amt, y, { width: 75, align: 'right' });
+    y += 16;
+  });
+
+  doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
+  y += 10;
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text('Total', 360, y, { width: 100, align: 'right' });
+  doc.text(money(settings, po.total), 465, y, { width: 80, align: 'right' });
+
+  if (po.notes) {
+    y += 30;
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(INK).text('Notes', 50, y); y += 14;
+    doc.font('Helvetica').fillColor(INK).text(po.notes, 50, y, { width: 495 });
+  }
+
+  doc.end();
+}
+
+// ---------------------------------------------------------------------------
+// AMBULANCE TRIP RECEIPT
+// ---------------------------------------------------------------------------
+export function generateAmbulanceReceiptPdf(res, { trip, settings }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  streamToResponse(doc, res, `${trip.tripNo || 'ambulance-receipt'}.pdf`);
+
+  let y = drawHeader(doc, settings);
+  y = drawTitle(doc, 'AMBULANCE TRIP RECEIPT', y);
+
+  const p = trip.patient || {};
+  const patientName = p.firstName ? [p.firstName, p.lastName].filter(Boolean).join(' ') : (trip.patientName || '—');
+
+  y = drawInfoGrid(doc, [
+    ['Trip No', trip.tripNo],
+    ['Date', fmtDate(trip.startedAt || trip.createdAt)],
+    ['Patient', patientName],
+    ['UHID', p.uhid || '—'],
+    ['Vehicle', trip.ambulance?.vehicleNo],
+    ['Status', trip.status],
+    ['Pickup', trip.pickup || '—'],
+    ['Drop', trip.drop || '—'],
+    ['Purpose', trip.purpose || '—'],
+  ], y);
+
+  y += 10;
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(INK).text('Charges', 360, y, { width: 100, align: 'right' });
+  doc.text(money(settings, trip.charges), 465, y, { width: 80, align: 'right' });
+
+  doc.end();
+}
+
+// ---------------------------------------------------------------------------
+// PAYSLIP
+// ---------------------------------------------------------------------------
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+export function generatePayslipPdf(res, { payslip, settings }) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const period = `${MONTH_NAMES[payslip.month - 1]}-${payslip.year}`;
+  streamToResponse(doc, res, `${payslip.payslipNo || 'payslip'}.pdf`);
+
+  let y = drawHeader(doc, settings);
+  y = drawTitle(doc, `PAYSLIP · ${period}`, y);
+
+  const e = payslip.employee || {};
+  y = drawInfoGrid(doc, [
+    ['Payslip No', payslip.payslipNo],
+    ['Employee', e.name],
+    ['Employee Code', e.employeeCode],
+    ['Designation', e.designation || '—'],
+    ['Working Days', payslip.workingDays],
+    ['Present / Absent', `${payslip.presentDays} / ${payslip.absentDays}`],
+  ], y);
+
+  y += 6;
+  const rows = [
+    ['Basic Salary', money(settings, payslip.basicSalary)],
+    ['Half Days', String(payslip.halfDays)],
+    ['Leave Days (paid)', String(payslip.leaveDays)],
+    ['Gross Pay', money(settings, payslip.grossPay)],
+    [payslip.adjustment >= 0 ? 'Adjustment (+)' : 'Adjustment (-)', money(settings, Math.abs(payslip.adjustment))],
+  ];
+  doc.fontSize(9).font('Helvetica');
+  rows.forEach(([k, v]) => {
+    doc.fillColor(MUTED).text(k, 50, y);
+    doc.fillColor(INK).text(v, 400, y, { width: 145, align: 'right' });
+    y += 16;
+  });
+  if (payslip.adjustmentNote) {
+    doc.fontSize(8).fillColor(MUTED).text(`Note: ${payslip.adjustmentNote}`, 50, y, { width: 495 });
+    y = doc.y + 8;
+  }
+
+  y += 6;
+  doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
+  y += 12;
+  doc.fontSize(12).font('Helvetica-Bold').fillColor(INK).text('Net Pay', 50, y);
+  doc.text(money(settings, payslip.netPay), 400, y, { width: 145, align: 'right' });
+  y += 24;
+
+  doc.fontSize(8).font('Helvetica').fillColor(MUTED)
+    .text(payslip.status === 'PAID' ? `Paid on ${fmtDate(payslip.paidAt)}` : 'Payment pending', 50, y);
 
   doc.end();
 }

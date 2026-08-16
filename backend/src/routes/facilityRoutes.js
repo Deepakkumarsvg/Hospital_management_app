@@ -31,6 +31,7 @@ beds.use(authenticate);
 beds.get('/', c.listBeds);
 beds.get('/available', c.availableBeds);
 beds.get('/map', c.bedMap);
+beds.get('/export', c.exportBeds);
 // Nurses may flip a bed to/from MAINTENANCE/RESERVED; ADMIN full control.
 beds.post('/', authorize(ROLES.ADMIN), validate(createBedSchema), c.createBed);
 beds.put('/:id', authorize(ROLES.ADMIN, ROLES.NURSE), validate(updateBedSchema), c.updateBed);

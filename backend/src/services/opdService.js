@@ -2,6 +2,8 @@ import { OPDVisit } from '../models/OPDVisit.js';
 import { Patient } from '../models/Patient.js';
 import { Doctor } from '../models/Doctor.js';
 import { Appointment } from '../models/Appointment.js';
+import { MedicineDispense } from '../models/MedicineDispense.js';
+import { LabOrder } from '../models/LabOrder.js';
 import { ApiError } from '../utils/ApiError.js';
 
 const POPULATE = [
@@ -9,6 +11,24 @@ const POPULATE = [
   { path: 'doctor', select: 'firstName lastName specialization' },
   { path: 'department', select: 'name code' },
 ];
+
+// Visit number is searchable directly, but patient/doctor are refs — resolve
+// matching ids first so a name/UHID search actually finds visits.
+async function searchFilter(search) {
+  if (!search) return {};
+  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const [patients, doctors] = await Promise.all([
+    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
+    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
+  ]);
+  return {
+    $or: [
+      { visitNo: rx },
+      { patient: { $in: patients.map((p) => p._id) } },
+      { doctor: { $in: doctors.map((d) => d._id) } },
+    ],
+  };
+}
 
 export async function listVisits({ page, limit, search, status, doctor, patient, date }) {
   const filter = {};
@@ -20,7 +40,7 @@ export async function listVisits({ page, limit, search, status, doctor, patient,
     const end = new Date(start); end.setDate(end.getDate() + 1);
     filter.visitDate = { $gte: start, $lt: end };
   }
-  if (search) filter.visitNo = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  Object.assign(filter, await searchFilter(search));
 
   const [items, total] = await Promise.all([
     OPDVisit.find(filter).populate(POPULATE).sort({ visitDate: -1 }).skip((page - 1) * limit).limit(limit),
@@ -58,6 +78,18 @@ export async function createVisit(data, userId) {
   if (!patient) throw ApiError.badRequest('Patient does not exist', 'PATIENT_NOT_FOUND');
   if (!doctor) throw ApiError.badRequest('Doctor does not exist', 'DOCTOR_NOT_FOUND');
 
+  // Guard against an accidental double-start (e.g. a double-clicked submit)
+  // for the same patient + doctor, same day.
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  const end = new Date(start); end.setDate(end.getDate() + 1);
+  const dupe = await OPDVisit.findOne({
+    patient: data.patient, doctor: data.doctor, status: 'OPEN',
+    visitDate: { $gte: start, $lt: end },
+  });
+  if (dupe) {
+    throw ApiError.conflict('This patient already has an open visit with this doctor today.', 'OPD_DUPLICATE', { visitId: dupe._id, visitNo: dupe.visitNo });
+  }
+
   const visit = new OPDVisit({ ...data, createdBy: userId });
   await visit.save();
 
@@ -74,11 +106,8 @@ export async function createVisit(data, userId) {
 export async function updateVisit(id, data) {
   const visit = await OPDVisit.findById(id);
   if (!visit) throw ApiError.notFound('OPD visit not found', 'OPD_NOT_FOUND');
-  if (visit.status !== 'OPEN' && data.status !== undefined) {
-    // allow re-opening only from COMPLETED? Keep simple: block edits once not OPEN.
-  }
-  if (visit.status === 'COMPLETED') {
-    throw ApiError.badRequest('Cannot edit a completed visit', 'OPD_LOCKED');
+  if (visit.status !== 'OPEN') {
+    throw ApiError.badRequest(`Cannot edit a ${visit.status.toLowerCase()} visit`, 'OPD_LOCKED');
   }
 
   const wasOpen = visit.status === 'OPEN';
@@ -96,9 +125,56 @@ export async function updateVisit(id, data) {
 }
 
 export async function deleteVisit(id) {
-  const visit = await OPDVisit.findByIdAndDelete(id);
+  const visit = await OPDVisit.findById(id);
   if (!visit) throw ApiError.notFound('OPD visit not found', 'OPD_NOT_FOUND');
+
+  // A completed visit is itself part of the patient's clinical record.
+  if (visit.status === 'COMPLETED') {
+    throw ApiError.badRequest('Cannot delete a completed visit — it is part of the patient\'s clinical record.', 'OPD_LOCKED');
+  }
+
+  const [dispenses, labOrders] = await Promise.all([
+    MedicineDispense.countDocuments({ opdVisit: id }),
+    LabOrder.countDocuments({ opdVisit: id }),
+  ]);
+  if (dispenses || labOrders) {
+    throw ApiError.conflict(
+      'This visit has linked medicine dispenses or lab orders and cannot be deleted.',
+      'OPD_HAS_HISTORY',
+      { dispenses, labOrders }
+    );
+  }
+
+  await OPDVisit.findByIdAndDelete(id);
   return visit;
+}
+
+// Flat rows for CSV/XLSX export.
+export async function opdRowsForExport({ search, status, doctor, patient, date }) {
+  const filter = {};
+  if (status && status !== 'ALL') filter.status = status;
+  if (doctor) filter.doctor = doctor;
+  if (patient) filter.patient = patient;
+  if (date) {
+    const start = new Date(date); start.setHours(0, 0, 0, 0);
+    const end = new Date(start); end.setDate(end.getDate() + 1);
+    filter.visitDate = { $gte: start, $lt: end };
+  }
+  Object.assign(filter, await searchFilter(search));
+
+  const items = await OPDVisit.find(filter).populate(POPULATE).sort({ visitDate: -1 });
+
+  return items.map((v) => ({
+    'Visit No': v.visitNo,
+    Patient: v.patient ? `${v.patient.firstName} ${v.patient.lastName || ''}`.trim() : '',
+    'Patient UHID': v.patient?.uhid || '',
+    Doctor: v.doctor ? `${v.doctor.firstName} ${v.doctor.lastName || ''}`.trim() : '',
+    Department: v.department?.name || '',
+    Date: v.visitDate ? v.visitDate.toISOString().slice(0, 10) : '',
+    Diagnosis: v.diagnosis,
+    Status: v.status,
+    'Follow-up Date': v.followUpDate ? v.followUpDate.toISOString().slice(0, 10) : '',
+  }));
 }
 
 export async function opdStats() {

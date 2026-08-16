@@ -38,7 +38,7 @@ export default function PortalRecords() {
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="card p-5">
         <h1 className="text-xl font-semibold">My Records</h1>
         <p className="mt-0.5 text-sm text-muted">Prescriptions, lab and radiology reports.</p>
       </div>

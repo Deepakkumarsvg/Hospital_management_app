@@ -21,10 +21,14 @@ const medicineDispenseSchema = new mongoose.Schema(
   {
     dispenseNo: { type: String, unique: true, index: true }, // PH-YYYY-000001
     patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', default: null },
+    doctor: { type: mongoose.Schema.Types.ObjectId, ref: 'Doctor', default: null },
     opdVisit: { type: mongoose.Schema.Types.ObjectId, ref: 'OPDVisit', default: null },
     items: { type: [dispenseItemSchema], default: [] },
     total: { type: Number, min: 0, default: 0 },
     dispensedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    status: { type: String, enum: ['COMPLETED', 'RETURNED'], default: 'COMPLETED' },
+    returnedAt: { type: Date, default: null },
+    returnedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );

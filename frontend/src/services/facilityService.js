@@ -1,4 +1,5 @@
 import api from './api.js';
+import { downloadFile } from '../utils/download.js';
 
 // ---- Wards ----
 export async function listWards() {
@@ -34,3 +35,8 @@ export async function getBedMap() {
 export const createBed = (p) => api.post('/beds', p).then((r) => r.data.data);
 export const updateBed = (id, p) => api.put(`/beds/${id}`, p).then((r) => r.data.data);
 export const deleteBed = (id) => api.delete(`/beds/${id}`).then((r) => r.data);
+
+export function exportBeds({ ward, status } = {}, format = 'csv') {
+  const date = new Date().toISOString().slice(0, 10);
+  return downloadFile('/beds/export', `beds-${date}.${format}`, { ward, status, format });
+}

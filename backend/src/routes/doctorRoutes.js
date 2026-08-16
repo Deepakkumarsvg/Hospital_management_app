@@ -8,6 +8,7 @@ import {
   createDoctorSchema,
   updateDoctorSchema,
   listDoctorsQuerySchema,
+  exportDoctorsQuerySchema,
 } from '../validators/doctorValidator.js';
 
 const router = Router();
@@ -17,6 +18,7 @@ router.use(authenticate);
 router.get('/', validate(listDoctorsQuerySchema, 'query'), controller.list);
 router.get('/active', controller.active);
 router.get('/stats', controller.stats);
+router.get('/export', authorize(ROLES.ADMIN), validate(exportDoctorsQuerySchema, 'query'), controller.exportDoctors);
 router.get('/me', controller.me); // must precede /:id
 router.get('/:id', controller.get);
 

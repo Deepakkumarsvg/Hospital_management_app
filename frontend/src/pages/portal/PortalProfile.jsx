@@ -29,8 +29,8 @@ export default function PortalProfile() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-3">
-        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-elevated"><User className="h-6 w-6" /></span>
+      <div className="card flex items-center gap-3 p-5">
+        <span className="flex h-12 w-12 items-center justify-center rounded-xl bg-surface"><User className="h-6 w-6" /></span>
         <div>
           <h1 className="text-xl font-semibold">{p.firstName} {p.lastName}</h1>
           <p className="text-sm text-muted">UHID <span className="font-mono">{p.uhid}</span></p>

@@ -9,6 +9,7 @@ import {
   updateAppointmentSchema,
   changeStatusSchema,
   listAppointmentsQuerySchema,
+  exportAppointmentsQuerySchema,
 } from '../validators/appointmentValidator.js';
 
 const router = Router();
@@ -21,6 +22,7 @@ const CAN_UPDATE_STATUS = [ROLES.ADMIN, ROLES.RECEPTIONIST, ROLES.DOCTOR, ROLES.
 
 router.get('/', authorize(...CAN_VIEW), validate(listAppointmentsQuerySchema, 'query'), controller.list);
 router.get('/stats', authorize(...CAN_VIEW), controller.stats);
+router.get('/export', authorize(...CAN_VIEW), validate(exportAppointmentsQuerySchema, 'query'), controller.exportAppointments);
 router.get('/:id', authorize(...CAN_VIEW), controller.get);
 
 router.post('/', authorize(...CAN_BOOK), validate(createAppointmentSchema), controller.create);

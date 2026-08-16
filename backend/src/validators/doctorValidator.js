@@ -40,3 +40,10 @@ export const listDoctorsQuerySchema = z.object({
   department: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
   status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
 });
+
+export const exportDoctorsQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  department: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});

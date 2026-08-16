@@ -7,8 +7,11 @@ import Input from '../../components/ui/Input.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
+import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getTenants, createTenant, setTenantStatus } from '../../services/tenantAdminService.js';
+
+const SLUG_RE = /^[a-z0-9-]{2,30}$/;
 
 function CreateModal({ onClose, onDone }) {
   const toast = useToast();
@@ -17,12 +20,18 @@ function CreateModal({ onClose, onDone }) {
   const [adminPassword, setPwd] = useState('');
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState(null);
+  const [error, setError] = useState('');
+
+  const cleanSlug = slug.trim().toLowerCase();
+  const slugValid = !cleanSlug || SLUG_RE.test(cleanSlug);
 
   const submit = async (e) => {
     e.preventDefault();
+    if (!SLUG_RE.test(cleanSlug)) { setError('Slug must be 2-30 chars: lowercase letters, numbers, hyphen'); return; }
+    setError('');
     setSaving(true);
     try {
-      const res = await createTenant({ slug: slug.trim().toLowerCase(), name, adminPassword: adminPassword || undefined });
+      const res = await createTenant({ slug: cleanSlug, name, adminPassword: adminPassword || undefined });
       setCreated(res);
       onDone();
     } catch (err) {
@@ -44,13 +53,15 @@ function CreateModal({ onClose, onDone }) {
             <p>Admin email: <span className="font-mono">{created.admin.email}</span></p>
             <p>Admin password: <span className="font-mono">{created.admin.password}</span></p>
           </div>
+          <p className="text-xs text-amber-600 dark:text-amber-400">This password is shown once — copy it now. Have the hospital's admin change it after their first login.</p>
           <p className="text-xs text-muted">Sign in with hospital code <span className="font-mono">{created.tenant.slug}</span> and the admin credentials above.</p>
         </div>
       ) : (
         <form id="tenant-f" onSubmit={submit} className="space-y-4">
-          <Input label="Hospital code (slug)" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="apollo" required />
+          <Input label="Hospital code (slug)" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="apollo"
+            error={error || (!slugValid ? 'Lowercase letters, numbers, hyphen only' : undefined)} required />
           <Input label="Hospital name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Apollo Hospital" required />
-          <Input label="Admin password (optional)" value={adminPassword} onChange={(e) => setPwd(e.target.value)} placeholder="Admin@123" />
+          <Input label="Admin password (optional)" value={adminPassword} onChange={(e) => setPwd(e.target.value)} placeholder="Leave blank to auto-generate a random one" />
           <p className="text-xs text-muted">A fresh isolated database will be provisioned and seeded with roles + an admin account.</p>
         </form>
       )}
@@ -63,14 +74,22 @@ export default function Hospitals() {
   const [tenants, setTenants] = useState(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [copied, setCopied] = useState('');
+  const [suspending, setSuspending] = useState(null);
+  const [busy, setBusy] = useState(false);
 
   const load = () => getTenants().then(setTenants).catch((e) => { toast.error(e.message || 'Failed to load'); setTenants([]); });
   useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
-  const toggle = async (t) => {
-    const next = t.status === 'ACTIVE' ? 'SUSPENDED' : 'ACTIVE';
-    try { await setTenantStatus(t.slug, next); toast.success(`${t.name} ${next.toLowerCase()}`); load(); }
+  // Suspending locks out every user at that hospital — worth a confirm.
+  // Reactivating is the safe direction, so it applies immediately.
+  const activate = async (t) => {
+    try { await setTenantStatus(t.slug, 'ACTIVE'); toast.success(`${t.name} activated`); load(); }
     catch (e) { toast.error(e.message || 'Failed'); }
+  };
+  const confirmSuspend = async () => {
+    setBusy(true);
+    try { await setTenantStatus(suspending.slug, 'SUSPENDED'); toast.success(`${suspending.name} suspended`); setSuspending(null); load(); }
+    catch (e) { toast.error(e.message || 'Failed'); } finally { setBusy(false); }
   };
 
   const copy = (slug) => { navigator.clipboard?.writeText(slug); setCopied(slug); setTimeout(() => setCopied(''), 1500); };
@@ -79,7 +98,7 @@ export default function Hospitals() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="card flex items-center justify-between p-5">
         <div>
           <h1 className="flex items-center gap-2 text-xl font-semibold"><Building className="h-5 w-5" /> Hospitals</h1>
           <p className="mt-0.5 text-sm text-muted">Each hospital runs on its own isolated database. {tenants.length} registered.</p>
@@ -115,7 +134,7 @@ export default function Hospitals() {
                     <td className="px-4 py-3"><Badge tone={t.status === 'ACTIVE' ? 'success' : 'danger'}>{t.status}</Badge></td>
                     <td className="px-4 py-3 text-right">
                       {t.slug !== 'default' && (
-                        <Button variant="outline" className="h-8" onClick={() => toggle(t)}>
+                        <Button variant="outline" className="h-8" onClick={() => (t.status === 'ACTIVE' ? setSuspending(t) : activate(t))}>
                           {t.status === 'ACTIVE' ? <><PowerOff className="h-4 w-4" /> Suspend</> : <><Power className="h-4 w-4" /> Activate</>}
                         </Button>
                       )}
@@ -129,6 +148,9 @@ export default function Hospitals() {
       )}
 
       {createOpen && <CreateModal onClose={() => setCreateOpen(false)} onDone={load} />}
+      <ConfirmDialog open={!!suspending} onClose={() => setSuspending(null)} onConfirm={confirmSuspend} loading={busy}
+        title="Suspend hospital?" confirmLabel="Suspend"
+        message={suspending ? `${suspending.name}'s staff will be immediately locked out of their accounts. You can reactivate it later.` : ''} />
     </div>
   );
 }

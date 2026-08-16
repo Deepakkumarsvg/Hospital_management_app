@@ -50,6 +50,7 @@ export function errorHandler(err, req, res, _next) {
     success: false,
     message,
     error: errorCode,
+    ...(err.details !== undefined ? { details: err.details } : {}),
     // Only expose stack for unexpected server errors in development.
     ...(process.env.NODE_ENV === 'development' && statusCode >= 500
       ? { stack: err.stack }

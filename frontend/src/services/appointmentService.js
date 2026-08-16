@@ -1,4 +1,5 @@
 import api from './api.js';
+import { downloadFile } from '../utils/download.js';
 
 export async function listAppointments(params = {}) {
   const { data } = await api.get('/appointments', { params });
@@ -27,4 +28,9 @@ export async function changeAppointmentStatus(id, status) {
 export async function deleteAppointment(id) {
   const { data } = await api.delete(`/appointments/${id}`);
   return data;
+}
+
+export function exportAppointments({ search, status, doctor, patient, date } = {}, format = 'csv') {
+  const day = new Date().toISOString().slice(0, 10);
+  return downloadFile('/appointments/export', `appointments-${day}.${format}`, { search, status, doctor, patient, date, format });
 }

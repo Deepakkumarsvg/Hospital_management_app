@@ -6,6 +6,7 @@ const otSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true },
     code: { type: String, required: true, unique: true, uppercase: true, trim: true },
+    specialization: { type: String, trim: true, default: '' }, // e.g. Cardiac, Ortho, General
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

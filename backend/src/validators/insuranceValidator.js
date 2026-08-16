@@ -25,6 +25,7 @@ export const updateClaimSchema = z.object({
 export const claimStatusSchema = z.object({
   status: z.enum(CLAIM_STATUSES),
   approvedAmount: z.coerce.number().min(0).optional(),
+  note: z.string().trim().max(500).optional(),
 });
 
 export const listClaimsQuerySchema = z.object({
@@ -33,4 +34,5 @@ export const listClaimsQuerySchema = z.object({
   search: z.string().trim().optional().default(''),
   status: z.enum([...CLAIM_STATUSES, 'ALL']).optional().default('ALL'),
   patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  invoice: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
 });

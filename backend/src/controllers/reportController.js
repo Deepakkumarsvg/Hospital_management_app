@@ -1,5 +1,7 @@
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/reportService.js';
+import { getSettings } from '../services/settingService.js';
+import { generateReportSummaryPdf } from '../utils/pdf.js';
 import { sendCsv, sendExcel } from '../utils/exporters.js';
 
 // GET /api/reports/summary?from=&to=
@@ -12,6 +14,23 @@ export const summary = asyncHandler(async (req, res) => {
 export const doctorActivity = asyncHandler(async (req, res) => {
   const data = await service.doctorActivity({ from: req.query.from, to: req.query.to });
   sendSuccess(res, { message: 'Doctor activity', data });
+});
+
+// GET /api/reports/export/summary?format=csv|xlsx&from=&to=
+export const exportSummary = asyncHandler(async (req, res) => {
+  const rows = await service.summaryRows({ from: req.query.from, to: req.query.to });
+  const name = `hms-summary-${req.query.from || 'all'}_${req.query.to || 'all'}`;
+  if (req.query.format === 'xlsx') return sendExcel(res, name, rows, 'Summary');
+  return sendCsv(res, name, rows);
+});
+
+// GET /api/reports/export/summary/pdf?from=&to=
+export const summaryPdf = asyncHandler(async (req, res) => {
+  const [summary, settings] = await Promise.all([
+    service.getSummary({ from: req.query.from, to: req.query.to }),
+    getSettings(),
+  ]);
+  generateReportSummaryPdf(res, { summary, settings });
 });
 
 // GET /api/reports/export/invoices?format=csv|xlsx&from=&to=

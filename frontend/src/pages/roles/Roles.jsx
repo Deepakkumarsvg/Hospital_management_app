@@ -1,47 +1,26 @@
-import { useEffect, useState } from 'react';
-import { ShieldCheck, Check, Save } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, forwardRef } from 'react';
+import { ShieldCheck, Crown, Check, Save } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { listRoles } from '../../services/userService.js';
+import { listRoles, getUserStats } from '../../services/userService.js';
 import { getRoles, getPermissionCatalog, updateRolePermissions } from '../../services/roleService.js';
+import { NAV_ITEMS } from '../../utils/navigation.js';
+import { cn } from '../../utils/cn.js';
 
-// Capability matrix — what each role can do across modules (mirrors backend RBAC).
-// This is the human-readable summary of the enforcement in middleware/routes.
-const MODULES = ['Patients', 'Appointments', 'Doctors', 'Departments', 'Users'];
-const CAPS = {
-  SUPER_ADMIN: { Patients: 'full', Appointments: 'full', Doctors: 'full', Departments: 'full', Users: 'full' },
-  ADMIN: { Patients: 'full', Appointments: 'full', Doctors: 'full', Departments: 'full', Users: 'full' },
-  DOCTOR: { Patients: 'view', Appointments: 'status', Doctors: 'view', Departments: 'view', Users: '—' },
-  NURSE: { Patients: 'view', Appointments: 'status', Doctors: 'view', Departments: 'view', Users: '—' },
-  RECEPTIONIST: { Patients: 'full', Appointments: 'full', Doctors: 'view', Departments: 'view', Users: '—' },
-  LAB_TECHNICIAN: { Patients: '—', Appointments: '—', Doctors: '—', Departments: 'view', Users: '—' },
-  RADIOLOGIST: { Patients: '—', Appointments: '—', Doctors: '—', Departments: 'view', Users: '—' },
-  PHARMACIST: { Patients: '—', Appointments: '—', Doctors: '—', Departments: 'view', Users: '—' },
-  ACCOUNTANT: { Patients: '—', Appointments: '—', Doctors: '—', Departments: 'view', Users: '—' },
-  STORE_MANAGER: { Patients: '—', Appointments: '—', Doctors: '—', Departments: 'view', Users: '—' },
-  OT_STAFF: { Patients: '—', Appointments: '—', Doctors: '—', Departments: 'view', Users: '—' },
-  HR: { Patients: '—', Appointments: '—', Doctors: '—', Departments: 'view', Users: '—' },
-};
+// Modules visible to *everyone* (empty roles array) aren't useful in a
+// role-comparison matrix — every column would just be a checkmark.
+const MATRIX_ITEMS = NAV_ITEMS.filter((i) => i.roles.length > 0);
 
-const LEVEL = {
-  full: { label: 'Full', tone: 'success' },
-  view: { label: 'View', tone: 'neutral' },
-  status: { label: 'Update', tone: 'warning' },
-  '—': { label: '—', tone: null },
-};
-
-function CapCell({ level }) {
-  const meta = LEVEL[level] || LEVEL['—'];
-  if (!meta.tone) return <span className="text-muted/40">—</span>;
-  return <Badge tone={meta.tone}>{meta.label}</Badge>;
+function hasAccess(item, roleName) {
+  return roleName === 'SUPER_ADMIN' || item.roles.includes(roleName);
 }
 
 // Editable per-role permission matrix (dynamic RBAC — V2).
-function PermissionEditor() {
+const PermissionEditor = forwardRef(function PermissionEditor({ focusRole }, ref) {
   const toast = useToast();
   const [roles, setRoles] = useState([]);
   const [catalog, setCatalog] = useState({ modules: [], actions: [] });
@@ -65,6 +44,13 @@ function PermissionEditor() {
     setSelected(name);
     setPerms(new Set(roles.find((r) => r.name === name)?.permissions || []));
   };
+
+  // Jumping in from a role card picks that role here too.
+  useEffect(() => {
+    if (focusRole && roles.length) onSelect(focusRole);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRole, roles]);
+
   const toggle = (key) => setPerms((s) => { const n = new Set(s); n.has(key) ? n.delete(key) : n.add(key); return n; });
 
   const save = async () => {
@@ -81,7 +67,7 @@ function PermissionEditor() {
   const isSuper = selected === 'SUPER_ADMIN';
 
   return (
-    <Card>
+    <Card ref={ref}>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold">Custom Permissions (editable)</h2>
@@ -127,25 +113,38 @@ function PermissionEditor() {
       )}
     </Card>
   );
-}
+});
 
 export default function Roles() {
   const toast = useToast();
   const [roles, setRoles] = useState([]);
+  const [userCounts, setUserCounts] = useState({});
   const [loading, setLoading] = useState(true);
+  const [focusRole, setFocusRole] = useState('');
+  const editorRef = useRef(null);
 
   useEffect(() => {
     listRoles()
       .then(setRoles)
       .catch((err) => toast.error(err.message || 'Failed to load roles'))
       .finally(() => setLoading(false));
+    getUserStats()
+      .then((s) => setUserCounts(Object.fromEntries((s.byRole || []).map((r) => [r.role, r.count]))))
+      .catch(() => {});
   }, [toast]);
+
+  const totalUsers = useMemo(() => Object.values(userCounts).reduce((a, b) => a + b, 0), [userCounts]);
+
+  const jumpToPermissions = (name) => {
+    setFocusRole(name);
+    editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   if (loading) return <Spinner full />;
 
   return (
     <div className="space-y-5">
-      <div>
+      <div className="card p-5">
         <h1 className="text-xl font-semibold">Roles & Permissions</h1>
         <p className="mt-0.5 text-sm text-muted">
           {roles.length} system roles. Permissions are enforced on every API — hiding a button is not security.
@@ -153,58 +152,71 @@ export default function Roles() {
       </div>
 
       {/* Role cards */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {roles.map((r) => (
-          <Card key={r.name}>
-            <div className="flex items-center gap-2">
-              <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface">
-                <ShieldCheck className="h-4 w-4" />
-              </span>
-              <h2 className="text-sm font-semibold">{r.name.replace(/_/g, ' ')}</h2>
-            </div>
-            <p className="mt-2 text-sm text-muted">{r.description}</p>
-          </Card>
-        ))}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        {roles.map((r) => {
+          const isSuper = r.name === 'SUPER_ADMIN';
+          return (
+            <button
+              key={r.name}
+              onClick={() => jumpToPermissions(r.name)}
+              className={cn(
+                'card flex flex-col rounded-xl border p-5 text-left transition-all hover:-translate-y-0.5 hover:shadow-md',
+                isSuper ? 'border-fg/30 bg-elevated' : 'border-border bg-elevated hover:border-fg/20'
+              )}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <span className={cn(
+                  'flex h-9 w-9 shrink-0 items-center justify-center rounded-lg',
+                  isSuper ? 'bg-accent text-accent-fg' : 'border border-border bg-surface'
+                )}>
+                  {isSuper ? <Crown className="h-4 w-4" /> : <ShieldCheck className="h-4 w-4" />}
+                </span>
+                <Badge tone={userCounts[r.name] ? 'neutral' : 'warning'}>
+                  {userCounts[r.name] || 0} user{userCounts[r.name] === 1 ? '' : 's'}
+                </Badge>
+              </div>
+              <h2 className="mt-3 text-sm font-semibold">{r.name.replace(/_/g, ' ')}</h2>
+              <p className="mt-1 line-clamp-2 text-xs text-muted">{r.description}</p>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Capability matrix */}
+      {/* Module visibility matrix — derived live from the app's own nav
+          config, so it can never drift out of date the way a hand-maintained
+          table would as new modules ship. */}
       <Card className="!p-0">
         <div className="border-b border-border px-5 py-3">
-          <h2 className="text-sm font-semibold">Access Matrix (Phase 2 modules)</h2>
+          <h2 className="text-sm font-semibold">Module Access Matrix</h2>
+          <p className="mt-0.5 text-xs text-muted">Which roles can see each module. {totalUsers} total users across all roles.</p>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-                <th className="px-4 py-3 font-medium">Role</th>
-                {MODULES.map((m) => <th key={m} className="px-4 py-3 font-medium">{m}</th>)}
+                <th className="sticky left-0 bg-elevated px-4 py-3 font-medium">Module</th>
+                {roles.map((r) => (
+                  <th key={r.name} className="px-3 py-3 text-center font-medium">{r.name.replace(/_/g, ' ')}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {roles.map((r) => {
-                const caps = CAPS[r.name] || {};
-                return (
-                  <tr key={r.name} className="border-b border-border/60 last:border-0 hover:bg-surface">
-                    <td className="px-4 py-3 font-medium">
-                      {r.name === 'SUPER_ADMIN'
-                        ? <span className="inline-flex items-center gap-1"><Check className="h-3.5 w-3.5" /> {r.name.replace(/_/g, ' ')}</span>
-                        : r.name.replace(/_/g, ' ')}
+              {MATRIX_ITEMS.map((item) => (
+                <tr key={item.label} className="border-b border-border/60 last:border-0 hover:bg-surface">
+                  <td className="sticky left-0 bg-elevated px-4 py-2.5 font-medium">{item.label}</td>
+                  {roles.map((r) => (
+                    <td key={r.name} className="px-3 py-2.5 text-center">
+                      {hasAccess(item, r.name) ? <Check className="mx-auto h-4 w-4 text-green-600 dark:text-green-400" /> : <span className="text-muted/30">—</span>}
                     </td>
-                    {MODULES.map((m) => <td key={m} className="px-4 py-3"><CapCell level={caps[m] || '—'} /></td>)}
-                  </tr>
-                );
-              })}
+                  ))}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
-        <div className="flex flex-wrap gap-4 border-t border-border px-5 py-3 text-xs text-muted">
-          <span className="flex items-center gap-1.5"><Badge tone="success">Full</Badge> create / edit / delete</span>
-          <span className="flex items-center gap-1.5"><Badge tone="warning">Update</Badge> status changes only</span>
-          <span className="flex items-center gap-1.5"><Badge tone="neutral">View</Badge> read-only</span>
-        </div>
       </Card>
 
-      <PermissionEditor />
+      <PermissionEditor ref={editorRef} focusRole={focusRole} />
     </div>
   );
 }

@@ -8,6 +8,15 @@ import { Bed } from '../models/Bed.js';
 import { Doctor } from '../models/Doctor.js';
 import { Invoice } from '../models/Invoice.js';
 import { Payment } from '../models/Payment.js';
+import { Medicine } from '../models/Medicine.js';
+import { MedicineDispense } from '../models/MedicineDispense.js';
+import { InventoryItem } from '../models/InventoryItem.js';
+import { PurchaseOrder } from '../models/PurchaseOrder.js';
+import { Ambulance } from '../models/Ambulance.js';
+import { AmbulanceTrip } from '../models/AmbulanceTrip.js';
+import { Employee } from '../models/Employee.js';
+import { Leave } from '../models/Leave.js';
+import { Payslip } from '../models/Payslip.js';
 
 // Group a collection by status within a date range on a given field.
 async function statusBreakdown(Model, dateField, range) {
@@ -20,6 +29,27 @@ async function statusBreakdown(Model, dateField, range) {
   return rows.map((r) => ({ status: r._id, count: r.count }));
 }
 
+// Core counts used both for the live period and, shifted back, for the
+// "vs previous period" comparison — kept minimal (just what the trend
+// indicators show) rather than re-running the whole summary twice.
+async function coreCounts(range) {
+  const createdRange = range ? { createdAt: range } : {};
+  const [patients, opdVisits, ipdAdmissions, labOrders, radOrders, collectedAgg] = await Promise.all([
+    Patient.countDocuments(createdRange),
+    OPDVisit.countDocuments(range ? { visitDate: range } : {}),
+    IPDAdmission.countDocuments(range ? { admissionDate: range } : {}),
+    LabOrder.countDocuments(createdRange),
+    RadiologyOrder.countDocuments(createdRange),
+    Payment.aggregate([{ $match: createdRange }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+  ]);
+  return { patients, opdVisits, ipdAdmissions, labOrders, radOrders, collected: Math.round(collectedAgg[0]?.total || 0) };
+}
+
+function pctChange(curr, prev) {
+  if (!prev) return curr ? null : 0; // no prior baseline to compare against
+  return Math.round(((curr - prev) / prev) * 100);
+}
+
 export async function getSummary({ from, to }) {
   // Build an inclusive [from, to] range if provided.
   let range;
@@ -30,11 +60,34 @@ export async function getSummary({ from, to }) {
   }
   const createdRange = range ? { createdAt: range } : {};
 
+  // Previous period of equal length, immediately before `from` — only
+  // meaningful when the user picked an actual range (an "all time" query
+  // has no natural prior period to compare against).
+  let deltas = null;
+  if (range?.$gte && range?.$lte) {
+    const lengthMs = range.$lte.getTime() - range.$gte.getTime();
+    const prevTo = new Date(range.$gte.getTime() - 1);
+    const prevFrom = new Date(prevTo.getTime() - lengthMs);
+    const [curr, prev] = await Promise.all([coreCounts(range), coreCounts({ $gte: prevFrom, $lte: prevTo })]);
+    deltas = {
+      patients: pctChange(curr.patients, prev.patients),
+      opdVisits: pctChange(curr.opdVisits, prev.opdVisits),
+      ipdAdmissions: pctChange(curr.ipdAdmissions, prev.ipdAdmissions),
+      labOrders: pctChange(curr.labOrders, prev.labOrders),
+      radOrders: pctChange(curr.radOrders, prev.radOrders),
+      collected: pctChange(curr.collected, prev.collected),
+    };
+  }
+
   const [
     patients, opdVisits, ipdAdmissions, labOrders, radOrders,
-    apptByStatus, opdByStatus, labByStatus, radByStatus,
+    apptByStatus, opdByStatus, labByStatus, radByStatus, ipdByStatus,
     currentAdmissions, beds, activeDoctors,
     revenueAgg, revenueByCategory, revenueTrend,
+    activeMedicines, lowStockMedicines, dispenseAgg,
+    lowStockItems, openPOs,
+    totalAmbulances, ongoingTrips, tripsAgg,
+    activeStaff, pendingLeaves, payrollAgg,
   ] = await Promise.all([
     Patient.countDocuments(createdRange),
     OPDVisit.countDocuments(range ? { visitDate: range } : {}),
@@ -45,6 +98,7 @@ export async function getSummary({ from, to }) {
     statusBreakdown(OPDVisit, 'visitDate', range),
     statusBreakdown(LabOrder, 'createdAt', range),
     statusBreakdown(RadiologyOrder, 'createdAt', range),
+    statusBreakdown(IPDAdmission, 'admissionDate', range),
     IPDAdmission.countDocuments({ status: 'ADMITTED' }),
     Bed.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
     Doctor.countDocuments({ status: 'ACTIVE' }),
@@ -75,14 +129,42 @@ export async function getSummary({ from, to }) {
       } },
       { $sort: { _id: 1 } },
     ]),
+    // Pharmacy
+    Medicine.countDocuments({ status: 'ACTIVE' }),
+    Medicine.countDocuments({ $expr: { $lte: ['$currentStock', '$minStock'] }, status: 'ACTIVE' }),
+    MedicineDispense.aggregate([
+      { $match: createdRange },
+      { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$total' } } },
+    ]),
+    // Inventory
+    InventoryItem.countDocuments({ $expr: { $lte: ['$currentStock', '$minStock'] }, status: 'ACTIVE' }),
+    PurchaseOrder.countDocuments({ status: { $in: ['ORDERED', 'PARTIALLY_RECEIVED'] } }),
+    // Ambulance
+    Ambulance.countDocuments({}),
+    AmbulanceTrip.countDocuments({ status: 'ONGOING' }),
+    AmbulanceTrip.aggregate([
+      { $match: createdRange },
+      { $group: { _id: null, count: { $sum: 1 }, revenue: { $sum: '$charges' } } },
+    ]),
+    // HR / payroll
+    Employee.countDocuments({ status: 'ACTIVE' }),
+    Leave.countDocuments({ status: 'PENDING' }),
+    Payslip.aggregate([
+      { $match: createdRange },
+      { $group: { _id: null, count: { $sum: 1 }, net: { $sum: '$netPay' }, paid: { $sum: { $cond: [{ $eq: ['$status', 'PAID'] }, '$netPay', 0] } } } },
+    ]),
   ]);
 
   const bedCounts = beds.reduce((acc, b) => ({ ...acc, [b._id]: b.count }), {});
   const totalBeds = beds.reduce((s, b) => s + b.count, 0);
   const rev = revenueAgg[0] || { billed: 0, collected: 0, due: 0, count: 0 };
+  const dispenses = dispenseAgg[0] || { count: 0, revenue: 0 };
+  const trips = tripsAgg[0] || { count: 0, revenue: 0 };
+  const payroll = payrollAgg[0] || { count: 0, net: 0, paid: 0 };
 
   return {
     range: { from: from || null, to: to || null },
+    deltas,
     totals: {
       patients, opdVisits, ipdAdmissions, labOrders, radOrders,
       currentAdmissions, activeDoctors,
@@ -103,9 +185,25 @@ export async function getSummary({ from, to }) {
       byCategory: revenueByCategory.map((r) => ({ category: r._id || 'OTHER', amount: Math.round(r.amount) })),
       trend: revenueTrend.map((r) => ({ date: r._id, amount: Math.round(r.amount) })),
     },
+    pharmacy: {
+      activeMedicines, lowStock: lowStockMedicines,
+      dispenses: dispenses.count, dispenseRevenue: Math.round(dispenses.revenue || 0),
+    },
+    inventory: { lowStock: lowStockItems, openPOs },
+    ambulance: {
+      total: totalAmbulances, ongoing: ongoingTrips,
+      trips: trips.count, tripRevenue: Math.round(trips.revenue || 0),
+    },
+    hr: {
+      activeStaff, pendingLeaves,
+      payslips: payroll.count,
+      payrollCost: Math.round(payroll.net || 0),
+      payrollPaid: Math.round(payroll.paid || 0),
+    },
     breakdowns: {
       appointments: apptByStatus,
       opd: opdByStatus,
+      ipd: ipdByStatus,
       lab: labByStatus,
       radiology: radByStatus,
     },
@@ -151,6 +249,25 @@ export async function doctorActivity({ from, to } = {}) {
     })
     .filter((r) => r.appointments || r.opdVisits)
     .sort((a, b) => b.opdVisits - a.opdVisits);
+}
+
+// Flat key/value rows for a full-summary export.
+export async function summaryRows({ from, to } = {}) {
+  const s = await getSummary({ from, to });
+  const rows = [];
+  const push = (metric, value) => rows.push({ Metric: metric, Value: value });
+
+  Object.entries(s.totals).forEach(([k, v]) => push(k, v));
+  Object.entries(s.beds).forEach(([k, v]) => push(`beds_${k}`, v));
+  Object.entries(s.revenue).forEach(([k, v]) => { if (typeof v !== 'object') push(`revenue_${k}`, v); });
+  Object.entries(s.pharmacy).forEach(([k, v]) => push(`pharmacy_${k}`, v));
+  Object.entries(s.inventory).forEach(([k, v]) => push(`inventory_${k}`, v));
+  Object.entries(s.ambulance).forEach(([k, v]) => push(`ambulance_${k}`, v));
+  Object.entries(s.hr).forEach(([k, v]) => push(`hr_${k}`, v));
+  for (const [group, breakdown] of Object.entries(s.breakdowns)) {
+    breakdown.forEach((r) => push(`${group}_${r.status}`, r.count));
+  }
+  return rows;
 }
 
 // Rows for an invoice export.

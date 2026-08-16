@@ -28,10 +28,19 @@ export async function dischargePatient(id, payload) {
   const { data } = await api.patch(`/ipd/${id}/discharge`, payload);
   return data.data;
 }
+export async function cancelAdmission(id) {
+  const { data } = await api.patch(`/ipd/${id}/cancel`);
+  return data.data;
+}
 export async function getIpdStats() {
   const { data } = await api.get('/ipd/stats');
   return data.data;
 }
 
-import { openPdf } from '../utils/download.js';
+import { openPdf, downloadFile } from '../utils/download.js';
 export const downloadDischargePdf = (id, no) => openPdf(`/ipd/${id}/discharge-pdf`, `${no || 'discharge'}.pdf`);
+
+export function exportAdmissions({ search, status, patient } = {}, format = 'csv') {
+  const date = new Date().toISOString().slice(0, 10);
+  return downloadFile('/ipd/export', `ipd-admissions-${date}.${format}`, { search, status, patient, format });
+}

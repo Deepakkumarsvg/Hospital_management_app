@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BedDouble, Plus } from 'lucide-react';
+import { BedDouble, Plus, Search, Download } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
@@ -10,13 +10,14 @@ import Pagination from '../../components/ui/Pagination.jsx';
 import AdmitForm from './AdmitForm.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { listAdmissions } from '../../services/ipdService.js';
+import { listAdmissions, exportAdmissions } from '../../services/ipdService.js';
 import { CAN_IPD_ADMIT, IPD_STATUS_META, formatDate } from '../../utils/constants.js';
 
 const STATUS_FILTER = [
   { value: 'ALL', label: 'All status' },
   { value: 'ADMITTED', label: 'Admitted' },
   { value: 'DISCHARGED', label: 'Discharged' },
+  { value: 'CANCELLED', label: 'Cancelled' },
 ];
 
 export default function IpdList() {
@@ -27,37 +28,71 @@ export default function IpdList() {
 
   const [data, setData] = useState({ items: [], pagination: { page: 1, totalPages: 1, total: 0, limit: 20 } });
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
   const [status, setStatus] = useState('ALL');
   const [page, setPage] = useState(1);
   const [formOpen, setFormOpen] = useState(false);
+  const [exporting, setExporting] = useState(null); // 'csv' | 'xlsx' | null
+  const debounceRef = useRef();
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await listAdmissions({ page, limit: 20, status }));
+      setData(await listAdmissions({ page, limit: 20, search, status }));
     } catch (err) {
       toast.error(err.message || 'Failed to load admissions');
     } finally {
       setLoading(false);
     }
-  }, [page, status, toast]);
+  }, [page, search, status, toast]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  const onSearchChange = (e) => {
+    const v = e.target.value;
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { setPage(1); setSearch(v); }, 350);
+  };
+
+  const onExport = async (format) => {
+    setExporting(format);
+    try {
+      await exportAdmissions({ search, status }, format);
+    } catch (err) {
+      toast.error(err.message || 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const { items, pagination } = data;
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="card flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">IPD Admissions</h1>
           <p className="mt-0.5 text-sm text-muted">{pagination.total} admission{pagination.total === 1 ? '' : 's'}</p>
         </div>
-        {canAdmit && <Button onClick={() => setFormOpen(true)}><Plus className="h-4 w-4" /> Admit Patient</Button>}
+        <div className="flex items-center gap-2">
+          <Button variant="outline" loading={exporting === 'csv'} disabled={!!exporting} onClick={() => onExport('csv')}>
+            <Download className="h-4 w-4" /> CSV
+          </Button>
+          <Button variant="outline" loading={exporting === 'xlsx'} disabled={!!exporting} onClick={() => onExport('xlsx')}>
+            <Download className="h-4 w-4" /> Excel
+          </Button>
+          {canAdmit && <Button onClick={() => setFormOpen(true)}><Plus className="h-4 w-4" /> Admit Patient</Button>}
+        </div>
       </div>
 
-      <div className="w-full sm:w-48">
-        <Select value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }} options={STATUS_FILTER} />
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <input className="input pl-9" placeholder="Search by patient, doctor or admission no…" onChange={onSearchChange} defaultValue={search} />
+        </div>
+        <div className="w-full sm:w-48">
+          <Select value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }} options={STATUS_FILTER} />
+        </div>
       </div>
 
       <div className="card overflow-hidden">

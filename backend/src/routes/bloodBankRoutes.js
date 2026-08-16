@@ -5,7 +5,7 @@ import { authorize } from '../middleware/rbac.js';
 import { validate } from '../middleware/validate.js';
 import { ROLES } from '../config/roles.js';
 import {
-  createDonorSchema, updateDonorSchema, collectUnitSchema, issueUnitSchema, listUnitsQuerySchema,
+  createDonorSchema, updateDonorSchema, collectUnitSchema, issueUnitSchema, reserveUnitSchema, listUnitsQuerySchema,
 } from '../validators/bloodBankValidator.js';
 
 const router = Router();
@@ -21,9 +21,12 @@ router.put('/donors/:id', authorize(...CAN_MANAGE), validate(updateDonorSchema),
 router.delete('/donors/:id', authorize(ROLES.ADMIN), c.deleteDonor);
 
 router.get('/units', authorize(...CAN_VIEW), validate(listUnitsQuerySchema, 'query'), c.listUnits);
+router.get('/units/:id', authorize(...CAN_VIEW), c.getUnit);
 router.get('/stock', authorize(...CAN_VIEW), c.stock);
 router.post('/units', authorize(...CAN_MANAGE), validate(collectUnitSchema), c.collectUnit);
 router.patch('/units/:id/issue', authorize(...CAN_MANAGE), validate(issueUnitSchema), c.issueUnit);
+router.patch('/units/:id/reserve', authorize(...CAN_MANAGE), validate(reserveUnitSchema), c.reserveUnit);
+router.patch('/units/:id/unreserve', authorize(...CAN_MANAGE), c.unreserveUnit);
 router.patch('/units/:id/discard', authorize(...CAN_MANAGE), c.discardUnit);
 
 export default router;

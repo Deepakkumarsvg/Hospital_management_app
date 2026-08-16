@@ -56,4 +56,20 @@ export const listLabQuerySchema = z.object({
   search: z.string().trim().optional().default(''),
   status: z.enum([...LAB_STATUSES, 'ALL']).optional().default('ALL'),
   patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  doctor: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+});
+
+export const exportLabQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  status: z.enum([...LAB_STATUSES, 'ALL']).optional().default('ALL'),
+  patient: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  doctor: z.string().regex(/^[0-9a-fA-F]{24}$/).optional(),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});
+
+// --- Test master: search/filter list ---
+export const listLabTestsQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  category: z.string().trim().optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
 });

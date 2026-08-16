@@ -28,6 +28,14 @@ export async function authenticate(req, _res, next) {
       throw ApiError.forbidden('Account is not active', 'ACCOUNT_INACTIVE');
     }
 
+    // A password change (self-service, admin reset, or forgot-password)
+    // retires every token minted before it — otherwise a stolen token keeps
+    // working until it expires on its own, which defeats the point of
+    // changing the password.
+    if (user.passwordChangedAt && decoded.iat && decoded.iat * 1000 < user.passwordChangedAt.getTime()) {
+      throw ApiError.unauthorized('Password was changed — please sign in again', 'TOKEN_STALE');
+    }
+
     req.user = user;
     next();
   } catch (err) {

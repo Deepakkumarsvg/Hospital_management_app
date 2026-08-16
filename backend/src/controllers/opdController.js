@@ -2,6 +2,7 @@ import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/opdService.js';
 import { getSettings } from '../services/settingService.js';
 import { generatePrescriptionPdf } from '../utils/pdf.js';
+import { sendCsv, sendExcel } from '../utils/exporters.js';
 
 export const list = asyncHandler(async (req, res) => {
   const { items, pagination } = await service.listVisits(req.query);
@@ -10,6 +11,14 @@ export const list = asyncHandler(async (req, res) => {
 
 export const stats = asyncHandler(async (_req, res) => {
   sendSuccess(res, { message: 'OPD stats', data: await service.opdStats() });
+});
+
+// GET /api/opd/export?format=csv|xlsx&search=&status=&doctor=&patient=&date=
+export const exportVisits = asyncHandler(async (req, res) => {
+  const rows = await service.opdRowsForExport(req.query);
+  const name = `opd-visits-${new Date().toISOString().slice(0, 10)}`;
+  if (req.query.format === 'xlsx') return sendExcel(res, name, rows, 'OPD Visits');
+  return sendCsv(res, name, rows);
 });
 
 export const get = asyncHandler(async (req, res) => {

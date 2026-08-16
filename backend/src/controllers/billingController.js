@@ -29,10 +29,23 @@ export const create = asyncHandler(async (req, res) => {
   notify({ role: ROLES.ACCOUNTANT, type: 'BILLING', title: 'New invoice', message: `${invoice.invoiceNo} · ₹${invoice.grandTotal}`, link: '/billing' });
   sendSuccess(res, { statusCode: 201, message: 'Invoice created', data: invoice });
 });
-export const update = asyncHandler(async (req, res) =>
-  sendSuccess(res, { message: 'Invoice updated', data: await service.updateInvoice(req.params.id, req.body) }));
+export const update = asyncHandler(async (req, res) => {
+  const invoice = await service.updateInvoice(req.params.id, req.body);
+  audit(req, { action: 'UPDATE', module: 'Invoice', recordId: invoice.invoiceNo, description: `Invoice ${invoice.invoiceNo} edited (new total ₹${invoice.grandTotal})` });
+  sendSuccess(res, { message: 'Invoice updated', data: invoice });
+});
 export const pay = asyncHandler(async (req, res) => {
   const result = await service.recordPayment(req.params.id, req.body, req.user?._id);
   audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `₹${result.payment.amount} via ${result.payment.method} on ${result.invoice.invoiceNo}` });
   sendSuccess(res, { statusCode: 201, message: 'Payment recorded', data: result });
+});
+export const cancel = asyncHandler(async (req, res) => {
+  const invoice = await service.cancelInvoice(req.params.id, req.body.reason);
+  audit(req, { action: 'UPDATE', module: 'Invoice', recordId: invoice.invoiceNo, description: `Invoice ${invoice.invoiceNo} cancelled${req.body.reason ? ` (${req.body.reason})` : ''}` });
+  sendSuccess(res, { message: 'Invoice cancelled', data: invoice });
+});
+export const refund = asyncHandler(async (req, res) => {
+  const result = await service.refundInvoice(req.params.id, req.body, req.user?._id);
+  audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `Refund ₹${result.payment.amount} on ${result.invoice.invoiceNo}${req.body.reason ? ` (${req.body.reason})` : ''}` });
+  sendSuccess(res, { statusCode: 201, message: 'Refund recorded', data: result });
 });

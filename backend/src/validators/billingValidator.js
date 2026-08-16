@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { INVOICE_ITEM_CATEGORIES } from '../models/Invoice.js';
+import { INVOICE_ITEM_CATEGORIES, INVOICE_ITEM_SOURCES } from '../models/Invoice.js';
 import { PAYMENT_METHODS } from '../models/Payment.js';
 
 const objectId = (label) => z.string().regex(/^[0-9a-fA-F]{24}$/, `Invalid ${label}`);
@@ -9,6 +9,9 @@ const itemSchema = z.object({
   description: z.string().trim().min(1, 'Description is required').max(200),
   quantity: z.coerce.number().min(1).optional(),
   unitPrice: z.coerce.number().min(0),
+  // Present only when this line was added from a suggested charge.
+  sourceType: z.enum(INVOICE_ITEM_SOURCES).optional().nullable(),
+  sourceId: objectId('sourceId').optional().nullable(),
 });
 
 export const createInvoiceSchema = z.object({
@@ -24,7 +27,6 @@ export const updateInvoiceSchema = z.object({
   discount: z.coerce.number().min(0).optional(),
   taxPercent: z.coerce.number().min(0).max(100).optional(),
   notes: z.string().trim().max(1000).optional(),
-  status: z.enum(['REFUNDED', 'CANCELLED']).optional(),
 });
 
 export const recordPaymentSchema = z.object({
@@ -32,6 +34,16 @@ export const recordPaymentSchema = z.object({
   method: z.enum(PAYMENT_METHODS).optional(),
   transactionId: z.string().trim().max(80).optional(),
   note: z.string().trim().max(300).optional(),
+});
+
+export const refundInvoiceSchema = z.object({
+  amount: z.coerce.number().positive('Refund amount must be greater than zero'),
+  method: z.enum(PAYMENT_METHODS).optional(),
+  reason: z.string().trim().max(300).optional(),
+});
+
+export const cancelInvoiceSchema = z.object({
+  reason: z.string().trim().max(300).optional(),
 });
 
 export const listInvoicesQuerySchema = z.object({

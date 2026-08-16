@@ -5,6 +5,8 @@ import PortalLayout from './layouts/PortalLayout.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import Spinner from './components/ui/Spinner.jsx';
 import Login from './pages/Login.jsx';
+import ForgotPassword from './pages/ForgotPassword.jsx';
+import ResetPassword from './pages/ResetPassword.jsx';
 import PortalRegister from './pages/portal/PortalRegister.jsx';
 import PortalDashboard from './pages/portal/PortalDashboard.jsx';
 import PortalAppointments from './pages/portal/PortalAppointments.jsx';
@@ -62,6 +64,9 @@ const BLOOD_ROLES = ['SUPER_ADMIN', 'ADMIN', 'LAB_TECHNICIAN', 'DOCTOR', 'NURSE'
 const HR_ROLES = ['SUPER_ADMIN', 'ADMIN', 'HR'];
 const AMBULANCE_ROLES = ['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST', 'NURSE'];
 const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN'];
+// Platform-wide tenant management spans every hospital — a hospital's own
+// ADMIN must not reach it, only the true platform SUPER_ADMIN.
+const SUPER_ADMIN_ROLES = ['SUPER_ADMIN'];
 
 function Guard({ roles, children }) {
   return <ProtectedRoute roles={roles}>{children}</ProtectedRoute>;
@@ -90,6 +95,8 @@ export default function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/portal/register" element={<PortalRegister />} />
 
         {/* Patient self-service portal */}
@@ -147,7 +154,7 @@ export default function App() {
           <Route path="/users" element={<Guard roles={ADMIN_ROLES}><UsersList /></Guard>} />
           <Route path="/roles" element={<Guard roles={ADMIN_ROLES}><Roles /></Guard>} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/hospitals" element={<Guard roles={ADMIN_ROLES}><Hospitals /></Guard>} />
+          <Route path="/hospitals" element={<Guard roles={SUPER_ADMIN_ROLES}><Hospitals /></Guard>} />
         </Route>
 
         <Route path="*" element={<NotFound />} />

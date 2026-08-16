@@ -16,12 +16,14 @@ const EMPTY = {
   consultationFee: 0, status: 'ACTIVE', user: '',
 };
 
+const DEFAULT_HOURS = { from: '09:00', to: '17:00' };
+
 export default function DoctorForm({ open, onClose, doctor, onSaved }) {
   const toast = useToast();
   const isEdit = !!doctor;
   const [departments, setDepartments] = useState([]);
   const [doctorUsers, setDoctorUsers] = useState([]); // DOCTOR-role login accounts
-  const [days, setDays] = useState([]); // selected weekday availability
+  const [schedule, setSchedule] = useState({}); // { MON: {from, to}, ... } — selected weekday availability
 
   const { register, handleSubmit, reset, formState: { errors, isSubmitting } } = useForm({ defaultValues: EMPTY });
 
@@ -36,21 +38,30 @@ export default function DoctorForm({ open, onClose, doctor, onSaved }) {
         department: doctor.department?.id || doctor.department?._id || doctor.department || '',
         user: doctor.user?.id || doctor.user?._id || doctor.user || '',
       });
-      setDays((doctor.availability || []).map((a) => a.day));
+      // Preserve each day's actual saved hours instead of defaulting them.
+      setSchedule(Object.fromEntries((doctor.availability || []).map((a) => [a.day, { from: a.from || DEFAULT_HOURS.from, to: a.to || DEFAULT_HOURS.to }])));
     } else {
       reset(EMPTY);
-      setDays([]);
+      setSchedule({});
     }
   }, [open, doctor, reset]);
 
-  const toggleDay = (d) => setDays((prev) => (prev.includes(d) ? prev.filter((x) => x !== d) : [...prev, d]));
+  const toggleDay = (d) => setSchedule((prev) => {
+    if (prev[d]) {
+      const { [d]: _removed, ...rest } = prev;
+      return rest;
+    }
+    return { ...prev, [d]: { ...DEFAULT_HOURS } };
+  });
+
+  const setDayTime = (d, field, value) => setSchedule((prev) => ({ ...prev, [d]: { ...prev[d], [field]: value } }));
 
   const onSubmit = async (values) => {
     const payload = {
       ...values,
       experienceYears: Number(values.experienceYears) || 0,
       consultationFee: Number(values.consultationFee) || 0,
-      availability: days.map((d) => ({ day: d, from: '09:00', to: '17:00' })),
+      availability: Object.entries(schedule).map(([day, hours]) => ({ day, from: hours.from, to: hours.to })),
       user: values.user || null, // link to a login account (optional)
     };
     try {
@@ -114,7 +125,7 @@ export default function DoctorForm({ open, onClose, doctor, onSaved }) {
                 key={d} type="button" onClick={() => toggleDay(d)}
                 className={
                   'rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ' +
-                  (days.includes(d)
+                  (schedule[d]
                     ? 'border-transparent bg-accent text-accent-fg'
                     : 'border-border text-muted hover:bg-surface')
                 }
@@ -123,7 +134,22 @@ export default function DoctorForm({ open, onClose, doctor, onSaved }) {
               </button>
             ))}
           </div>
-          <p className="mt-1.5 text-xs text-muted">Default hours 09:00–17:00 on selected days.</p>
+          {Object.keys(schedule).length === 0 ? (
+            <p className="mt-1.5 text-xs text-muted">No availability set.</p>
+          ) : (
+            <div className="mt-3 space-y-2">
+              {WEEKDAYS.filter((d) => schedule[d]).map((d) => (
+                <div key={d} className="flex items-center gap-3 rounded-lg border border-border p-2">
+                  <span className="w-10 text-xs font-medium text-muted">{d}</span>
+                  <input type="time" className="input" value={schedule[d].from}
+                    onChange={(e) => setDayTime(d, 'from', e.target.value)} />
+                  <span className="text-xs text-muted">to</span>
+                  <input type="time" className="input" value={schedule[d].to}
+                    onChange={(e) => setDayTime(d, 'to', e.target.value)} />
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </form>
     </Modal>

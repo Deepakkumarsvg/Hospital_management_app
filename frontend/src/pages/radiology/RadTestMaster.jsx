@@ -1,6 +1,6 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useForm } from 'react-hook-form';
-import { Plus, Pencil, Trash2, Scan } from 'lucide-react';
+import { Plus, Pencil, Trash2, Scan, Search } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Input from '../../components/ui/Input.jsx';
@@ -13,6 +13,12 @@ import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { listRadTests, createRadTest, updateRadTest, deleteRadTest } from '../../services/radiologyService.js';
 import { CAN_MANAGE_ADMIN, MODALITY_OPTIONS, PATIENT_STATUS_OPTIONS } from '../../utils/constants.js';
+
+const STATUS_FILTER = [
+  { value: 'ALL', label: 'All status' },
+  { value: 'ACTIVE', label: 'Active' },
+  { value: 'INACTIVE', label: 'Inactive' },
+];
 
 function TestForm({ open, onClose, test, onSaved }) {
   const toast = useToast();
@@ -44,16 +50,34 @@ export default function RadTestMaster() {
   const canManage = CAN_MANAGE_ADMIN.includes(role);
   const [tests, setTests] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState('ALL');
+  const [modality, setModality] = useState('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
   const [delLoading, setDelLoading] = useState(false);
+  const debounceRef = useRef();
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setTests(await listRadTests()); } catch (err) { toast.error(err.message || 'Failed'); } finally { setLoading(false); }
-  }, [toast]);
+    try { setTests(await listRadTests({ search, status, modality: modality || undefined })); }
+    catch (err) { toast.error(err.message || 'Failed'); } finally { setLoading(false); }
+  }, [search, status, modality, toast]);
   useEffect(() => { load(); }, [load]);
+
+  const onSearchChange = (e) => {
+    const v = e.target.value;
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setSearch(v), 350);
+  };
+
+  // Group by modality for easier scanning of a large catalogue.
+  const groups = tests.reduce((acc, t) => {
+    const key = t.modality || 'OTHER';
+    (acc[key] ||= []).push(t);
+    return acc;
+  }, {});
 
   const confirmDelete = async () => {
     setDelLoading(true);
@@ -64,37 +88,53 @@ export default function RadTestMaster() {
 
   return (
     <div className="space-y-4">
-      {canManage && <div className="flex justify-end"><Button onClick={() => { setEditing(null); setFormOpen(true); }}><Plus className="h-4 w-4" /> New Test</Button></div>}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input className="input pl-9" placeholder="Search by name or code…" onChange={onSearchChange} defaultValue={search} />
+          </div>
+          <div className="w-full sm:w-44"><Select value={modality} onChange={(e) => setModality(e.target.value)} options={[{ value: '', label: 'All modalities' }, ...MODALITY_OPTIONS]} /></div>
+          <div className="w-full sm:w-44"><Select value={status} onChange={(e) => setStatus(e.target.value)} options={STATUS_FILTER} /></div>
+        </div>
+        {canManage && <Button onClick={() => { setEditing(null); setFormOpen(true); }}><Plus className="h-4 w-4" /> New Test</Button>}
+      </div>
       {tests.length === 0 ? (
-        <EmptyState icon={Scan} title="No tests" description="Add radiology investigations to the catalogue." />
+        <EmptyState icon={Scan} title={search ? 'No tests match your search' : 'No tests'} description={search ? 'Try a different name or code.' : 'Add radiology investigations to the catalogue.'} />
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead><tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
-              <th className="px-4 py-3 font-medium">Code</th><th className="px-4 py-3 font-medium">Name</th>
-              <th className="px-4 py-3 font-medium">Modality</th><th className="px-4 py-3 font-medium">Body Part</th>
-              <th className="px-4 py-3 font-medium">Price</th><th className="px-4 py-3 font-medium">Status</th>
-              {canManage && <th className="px-4 py-3 text-right font-medium">Actions</th>}
-            </tr></thead>
-            <tbody>
-              {tests.map((t) => (
-                <tr key={t.id || t._id} className="border-b border-border/60 last:border-0 hover:bg-surface">
-                  <td className="px-4 py-3"><Badge>{t.code}</Badge></td>
-                  <td className="px-4 py-3 font-medium">{t.name}</td>
-                  <td className="px-4 py-3"><Badge tone="neutral">{t.modality}</Badge></td>
-                  <td className="px-4 py-3 text-muted">{t.bodyPart || '—'}</td>
-                  <td className="px-4 py-3 tabular-nums">₹{t.price}</td>
-                  <td className="px-4 py-3"><Badge tone={t.status === 'ACTIVE' ? 'success' : 'neutral'}>{t.status}</Badge></td>
-                  {canManage && (
-                    <td className="px-4 py-3"><div className="flex items-center justify-end gap-1">
-                      <button onClick={() => { setEditing(t); setFormOpen(true); }} className="btn-ghost h-8 w-8 !p-0"><Pencil className="h-4 w-4" /></button>
-                      <button onClick={() => setDeleting(t)} className="btn-ghost h-8 w-8 !p-0 text-red-500 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></button>
-                    </div></td>
-                  )}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-5">
+          {Object.entries(groups).map(([mod, modTests]) => (
+            <div key={mod}>
+              <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">{mod} <span className="font-normal">({modTests.length})</span></h3>
+              <div className="overflow-hidden rounded-lg border border-border">
+                <table className="w-full min-w-[640px] text-sm">
+                  <thead><tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted">
+                    <th className="px-4 py-3 font-medium">Code</th><th className="px-4 py-3 font-medium">Name</th>
+                    <th className="px-4 py-3 font-medium">Body Part</th>
+                    <th className="px-4 py-3 font-medium">Price</th><th className="px-4 py-3 font-medium">Status</th>
+                    {canManage && <th className="px-4 py-3 text-right font-medium">Actions</th>}
+                  </tr></thead>
+                  <tbody>
+                    {modTests.map((t) => (
+                      <tr key={t.id || t._id} className="border-b border-border/60 last:border-0 hover:bg-surface">
+                        <td className="px-4 py-3"><Badge>{t.code}</Badge></td>
+                        <td className="px-4 py-3 font-medium">{t.name}</td>
+                        <td className="px-4 py-3 text-muted">{t.bodyPart || '—'}</td>
+                        <td className="px-4 py-3 tabular-nums">₹{t.price}</td>
+                        <td className="px-4 py-3"><Badge tone={t.status === 'ACTIVE' ? 'success' : 'neutral'}>{t.status}</Badge></td>
+                        {canManage && (
+                          <td className="px-4 py-3"><div className="flex items-center justify-end gap-1">
+                            <button onClick={() => { setEditing(t); setFormOpen(true); }} className="btn-ghost h-8 w-8 !p-0"><Pencil className="h-4 w-4" /></button>
+                            <button onClick={() => setDeleting(t)} className="btn-ghost h-8 w-8 !p-0 text-red-500 hover:bg-red-500/10"><Trash2 className="h-4 w-4" /></button>
+                          </div></td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
         </div>
       )}
       <TestForm open={formOpen} onClose={() => setFormOpen(false)} test={editing} onSaved={load} />

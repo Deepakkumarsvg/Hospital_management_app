@@ -25,7 +25,7 @@ export default function Topbar({ onMenuClick }) {
     .toUpperCase();
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-bg/80 px-4 backdrop-blur">
+    <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-border bg-bg/80 px-4 backdrop-blur print:hidden">
       <div className="flex items-center gap-3">
         <button onClick={onMenuClick} className="btn-ghost h-9 w-9 !p-0 lg:hidden" aria-label="Open menu">
           <Menu className="h-5 w-5" />

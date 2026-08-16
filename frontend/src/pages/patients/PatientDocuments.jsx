@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Upload, FileText, Download, Trash2, File } from 'lucide-react';
+import { Upload, FileText, Download, Trash2, File, Eye } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
@@ -9,7 +9,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
-  listPatientDocuments, uploadPatientDocument, deletePatientDocument, downloadPatientDocument,
+  listPatientDocuments, uploadPatientDocument, deletePatientDocument, downloadPatientDocument, viewPatientDocument,
 } from '../../services/documentService.js';
 import { CAN_EDIT_PATIENTS, formatDate } from '../../utils/constants.js';
 
@@ -80,6 +80,14 @@ export default function PatientDocuments({ patientId }) {
     }
   };
 
+  const onView = async (doc) => {
+    try {
+      await viewPatientDocument(patientId, doc);
+    } catch (err) {
+      toast.error(err.message || 'Could not open document');
+    }
+  };
+
   const confirmDelete = async () => {
     setDeleteLoading(true);
     try {
@@ -127,6 +135,7 @@ export default function PatientDocuments({ patientId }) {
                 </p>
               </div>
               <Badge>{CAT_LABEL[d.category] || d.category}</Badge>
+              <button onClick={() => onView(d)} className="btn-ghost h-8 w-8 !p-0" title="View"><Eye className="h-4 w-4" /></button>
               <button onClick={() => onDownload(d)} className="btn-ghost h-8 w-8 !p-0" title="Download"><Download className="h-4 w-4" /></button>
               {canEdit && (
                 <button onClick={() => setDeleting(d)} className="btn-ghost h-8 w-8 !p-0 text-red-500 hover:bg-red-500/10" title="Delete"><Trash2 className="h-4 w-4" /></button>

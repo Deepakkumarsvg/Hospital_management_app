@@ -1,5 +1,6 @@
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/facilityService.js';
+import { sendCsv, sendExcel } from '../utils/exporters.js';
 
 // ---- Wards ----
 export const listWards = asyncHandler(async (_req, res) =>
@@ -32,6 +33,13 @@ export const availableBeds = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: 'Available beds', data: await service.availableBeds(req.query.ward) }));
 export const bedMap = asyncHandler(async (_req, res) =>
   sendSuccess(res, { message: 'Bed map', data: await service.bedMap() }));
+// GET /api/beds/export?format=csv|xlsx&ward=&status=
+export const exportBeds = asyncHandler(async (req, res) => {
+  const rows = await service.bedRowsForExport(req.query);
+  const name = `beds-${new Date().toISOString().slice(0, 10)}`;
+  if (req.query.format === 'xlsx') return sendExcel(res, name, rows, 'Beds');
+  return sendCsv(res, name, rows);
+});
 export const createBed = asyncHandler(async (req, res) =>
   sendSuccess(res, { statusCode: 201, message: 'Bed created', data: await service.createBed(req.body) }));
 export const updateBed = asyncHandler(async (req, res) =>

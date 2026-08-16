@@ -10,6 +10,8 @@ import {
   createPatientSchema,
   updatePatientSchema,
   listPatientsQuerySchema,
+  exportPatientsQuerySchema,
+  mergePatientSchema,
 } from '../validators/patientValidator.js';
 
 const router = Router();
@@ -24,6 +26,7 @@ const CAN_EDIT = [ROLES.ADMIN, ROLES.RECEPTIONIST];
 
 router.get('/', authorize(...CAN_VIEW), validate(listPatientsQuerySchema, 'query'), patientController.listPatients);
 router.get('/stats', authorize(...CAN_VIEW), patientController.getStats);
+router.get('/export', authorize(...CAN_VIEW), validate(exportPatientsQuerySchema, 'query'), patientController.exportPatients);
 router.get('/:id', authorize(...CAN_VIEW), patientController.getPatient);
 
 router.post('/', authorize(...CAN_EDIT), validate(createPatientSchema), patientController.createPatient);
@@ -31,6 +34,9 @@ router.put('/:id', authorize(...CAN_EDIT), validate(updatePatientSchema), patien
 
 // Deletion is restricted to ADMIN (SUPER_ADMIN bypasses via rbac).
 router.delete('/:id', authorize(ROLES.ADMIN), patientController.deletePatient);
+
+// Merging removes a whole patient profile, same trust level as delete.
+router.post('/:id/merge', authorize(ROLES.ADMIN), validate(mergePatientSchema), patientController.mergePatient);
 
 // --- Patient documents ---
 router.get('/:id/documents', authorize(...CAN_VIEW), documentController.listDocuments);

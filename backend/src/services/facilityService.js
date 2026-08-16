@@ -84,10 +84,32 @@ export async function availableBeds(ward) {
   return Bed.find(filter).populate('room', 'roomNo').populate('ward', 'name code').sort({ bedNo: 1 });
 }
 
+// Flat rows for CSV/XLSX export.
+export async function bedRowsForExport({ ward, status } = {}) {
+  const filter = {};
+  if (ward) filter.ward = ward;
+  if (status) filter.status = status;
+  const beds = await Bed.find(filter)
+    .populate('room', 'roomNo')
+    .populate('ward', 'name code')
+    .populate('currentAdmission', 'admissionNo')
+    .sort({ bedNo: 1 });
+
+  return beds.map((b) => ({
+    Ward: b.ward?.name || '',
+    'Ward Code': b.ward?.code || '',
+    Room: b.room?.roomNo || '',
+    'Bed No': b.bedNo,
+    Status: b.status,
+    'Daily Charge': b.dailyCharge,
+    'Current Admission': b.currentAdmission?.admissionNo || '',
+  }));
+}
+
 // Bed map: wards → rooms → beds, plus availability counts.
 export async function bedMap() {
   const [wards, rooms, beds] = await Promise.all([
-    Ward.find({ status: 'ACTIVE' }).sort({ name: 1 }).lean(),
+    Ward.find({ status: 'ACTIVE' }).populate('department', 'name code').sort({ name: 1 }).lean(),
     Room.find().lean(),
     Bed.find().populate('currentAdmission', 'admissionNo').lean(),
   ]);

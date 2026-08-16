@@ -1,9 +1,18 @@
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/departmentService.js';
+import { sendCsv, sendExcel } from '../utils/exporters.js';
 
 export const list = asyncHandler(async (req, res) => {
   const { items, pagination } = await service.listDepartments(req.query);
   sendSuccess(res, { message: 'Departments fetched', data: items, meta: pagination });
+});
+
+// GET /api/departments/export?format=csv|xlsx&search=&status=
+export const exportDepartments = asyncHandler(async (req, res) => {
+  const rows = await service.departmentRowsForExport(req.query);
+  const name = `departments-${new Date().toISOString().slice(0, 10)}`;
+  if (req.query.format === 'xlsx') return sendExcel(res, name, rows, 'Departments');
+  return sendCsv(res, name, rows);
 });
 
 export const active = asyncHandler(async (_req, res) => {

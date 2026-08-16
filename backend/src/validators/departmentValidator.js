@@ -20,3 +20,9 @@ export const listDepartmentsQuerySchema = z.object({
   search: z.string().trim().optional().default(''),
   status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
 });
+
+export const exportDepartmentsQuerySchema = z.object({
+  search: z.string().trim().optional().default(''),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'ALL']).optional().default('ALL'),
+  format: z.enum(['csv', 'xlsx']).optional().default('csv'),
+});

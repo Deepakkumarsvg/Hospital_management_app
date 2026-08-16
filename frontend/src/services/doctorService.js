@@ -1,4 +1,5 @@
 import api from './api.js';
+import { downloadFile } from '../utils/download.js';
 
 export async function listDoctors(params = {}) {
   const { data } = await api.get('/doctors', { params });
@@ -32,4 +33,9 @@ export async function updateDoctor(id, payload) {
 export async function deleteDoctor(id) {
   const { data } = await api.delete(`/doctors/${id}`);
   return data;
+}
+
+export function exportDoctors({ search, department, status } = {}, format = 'csv') {
+  const date = new Date().toISOString().slice(0, 10);
+  return downloadFile('/doctors/export', `doctors-${date}.${format}`, { search, department, status, format });
 }

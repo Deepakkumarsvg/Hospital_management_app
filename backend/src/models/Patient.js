@@ -48,7 +48,8 @@ const patientSchema = new mongoose.Schema(
     emergencyContact: { type: emergencyContactSchema, default: () => ({}) },
     allergies: { type: String, trim: true, default: '' },
     medicalHistory: { type: String, trim: true, default: '' },
-    insurance: { type: insuranceSchema, default: () => ({}) },
+    // A patient may carry more than one policy (e.g. employer + personal cover).
+    insurances: { type: [insuranceSchema], default: () => [] },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },

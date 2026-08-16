@@ -14,11 +14,29 @@ const POPULATE = [
   { path: 'nursingNotes.by', select: 'name role' },
 ];
 
+// Admission number is searchable directly, but patient/doctor are refs —
+// resolve matching ids first so a name/UHID search actually finds admissions.
+async function searchFilter(search) {
+  if (!search) return {};
+  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const [patients, doctors] = await Promise.all([
+    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
+    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
+  ]);
+  return {
+    $or: [
+      { admissionNo: rx },
+      { patient: { $in: patients.map((p) => p._id) } },
+      { admittingDoctor: { $in: doctors.map((d) => d._id) } },
+    ],
+  };
+}
+
 export async function listAdmissions({ page, limit, search, status, patient }) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (patient) filter.patient = patient;
-  if (search) filter.admissionNo = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  Object.assign(filter, await searchFilter(search));
 
   const [items, total] = await Promise.all([
     IPDAdmission.find(filter).populate(POPULATE).sort({ admissionDate: -1 }).skip((page - 1) * limit).limit(limit),
@@ -116,6 +134,47 @@ export async function dischargePatient(id, data) {
   // Free the bed.
   await Bed.findByIdAndUpdate(adm.bed, { status: 'AVAILABLE', currentAdmission: null });
   return adm.populate(POPULATE);
+}
+
+// Cancel a mistakenly-created admission — distinct from a discharge, since
+// no care was actually given. Frees the bed just like a discharge does.
+export async function cancelAdmission(id) {
+  const adm = await IPDAdmission.findById(id);
+  if (!adm) throw ApiError.notFound('Admission not found', 'IPD_NOT_FOUND');
+  if (adm.status !== 'ADMITTED') {
+    throw ApiError.badRequest('Only an active admission can be cancelled', 'IPD_NOT_ACTIVE');
+  }
+
+  adm.status = 'CANCELLED';
+  await adm.save();
+
+  await Bed.findByIdAndUpdate(adm.bed, { status: 'AVAILABLE', currentAdmission: null });
+  return adm.populate(POPULATE);
+}
+
+// Flat rows for CSV/XLSX export.
+export async function ipdRowsForExport({ search, status, patient }) {
+  const filter = {};
+  if (status && status !== 'ALL') filter.status = status;
+  if (patient) filter.patient = patient;
+  Object.assign(filter, await searchFilter(search));
+
+  const items = await IPDAdmission.find(filter).populate(POPULATE).sort({ admissionDate: -1 });
+
+  return items.map((a) => ({
+    'Admission No': a.admissionNo,
+    Patient: a.patient ? `${a.patient.firstName} ${a.patient.lastName || ''}`.trim() : '',
+    'Patient UHID': a.patient?.uhid || '',
+    Doctor: a.admittingDoctor ? `${a.admittingDoctor.firstName} ${a.admittingDoctor.lastName || ''}`.trim() : '',
+    Ward: a.ward?.name || '',
+    Room: a.room?.roomNo || '',
+    Bed: a.bed?.bedNo || '',
+    'Admitted On': a.admissionDate ? a.admissionDate.toISOString().slice(0, 10) : '',
+    'Discharged On': a.dischargeDate ? a.dischargeDate.toISOString().slice(0, 10) : '',
+    'Length of Stay (days)': a.lengthOfStayDays,
+    Diagnosis: a.diagnosis,
+    Status: a.status,
+  }));
 }
 
 export async function ipdStats() {

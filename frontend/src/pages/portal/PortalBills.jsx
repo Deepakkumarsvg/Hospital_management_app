@@ -33,7 +33,7 @@ export default function PortalBills() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="card flex items-center justify-between p-5">
         <div>
           <h1 className="text-xl font-semibold">My Bills</h1>
           <p className="mt-0.5 text-sm text-muted">View and download your invoices.</p>

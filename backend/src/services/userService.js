@@ -1,4 +1,5 @@
 import { User } from '../models/User.js';
+import { Doctor } from '../models/Doctor.js';
 import { ApiError } from '../utils/ApiError.js';
 
 export async function listUsers({ page, limit, search, role }) {
@@ -16,9 +17,24 @@ export async function listUsers({ page, limit, search, role }) {
 }
 
 export async function getUser(id) {
-  const user = await User.findById(id).populate('department', 'name code');
+  const user = await User.findById(id).populate('department', 'name code').populate('patient', 'uhid firstName lastName');
   if (!user) throw ApiError.notFound('User not found', 'USER_NOT_FOUND');
-  return user;
+  // Doctor accounts link the other way (Doctor.user -> User), so it isn't a
+  // field on User itself — look it up separately when relevant.
+  const linkedDoctor = user.role === 'DOCTOR'
+    ? await Doctor.findOne({ user: id }).select('fullName specialization')
+    : null;
+  return { user, linkedDoctor };
+}
+
+export async function userStats() {
+  const [total, active, suspended, byRole] = await Promise.all([
+    User.countDocuments({}),
+    User.countDocuments({ status: 'ACTIVE' }),
+    User.countDocuments({ status: 'SUSPENDED' }),
+    User.aggregate([{ $group: { _id: '$role', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+  ]);
+  return { total, active, suspended, byRole: byRole.map((r) => ({ role: r._id, count: r.count })) };
 }
 
 export async function createUser({ password, ...data }) {

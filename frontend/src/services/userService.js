@@ -8,6 +8,14 @@ export async function listRoles() {
   const { data } = await api.get('/users/roles');
   return data.data;
 }
+export async function getUser(id) {
+  const { data } = await api.get(`/users/${id}`);
+  return data.data;
+}
+export async function getUserStats() {
+  const { data } = await api.get('/users/stats');
+  return data.data;
+}
 export async function createUser(payload) {
   const { data } = await api.post('/users', payload);
   return data.data;

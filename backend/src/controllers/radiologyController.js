@@ -1,5 +1,9 @@
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/radiologyService.js';
+import { getSettings } from '../services/settingService.js';
+import { generateRadiologyReportPdf } from '../utils/pdf.js';
+import { sendCsv, sendExcel } from '../utils/exporters.js';
+import { audit } from '../utils/audit.js';
 
 // ---- Test master ----
 export const listTests = asyncHandler(async (req, res) =>
@@ -11,7 +15,8 @@ export const createTest = asyncHandler(async (req, res) =>
 export const updateTest = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: 'Test updated', data: await service.updateTest(req.params.id, req.body) }));
 export const deleteTest = asyncHandler(async (req, res) => {
-  await service.deleteTest(req.params.id);
+  const t = await service.deleteTest(req.params.id);
+  audit(req, { action: 'DELETE', module: 'RadiologyTest', recordId: t.code, description: `Deleted radiology test ${t.name}` });
   sendSuccess(res, { message: 'Test deleted', data: null });
 });
 
@@ -30,3 +35,20 @@ export const changeStatus = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: `Order marked ${req.body.status}`, data: await service.changeStatus(req.params.id, req.body.status, req.body.scheduledAt) }));
 export const submitReport = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: 'Report submitted', data: await service.submitReport(req.params.id, req.body, req.user?._id) }));
+
+// GET /api/radiology/orders/export?format=csv|xlsx&search=&status=&patient=&doctor=
+export const exportOrders = asyncHandler(async (req, res) => {
+  const rows = await service.radOrderRowsForExport(req.query);
+  const name = `radiology-orders-${new Date().toISOString().slice(0, 10)}`;
+  if (req.query.format === 'xlsx') return sendExcel(res, name, rows, 'Radiology Orders');
+  return sendCsv(res, name, rows);
+});
+
+// GET /api/radiology/orders/:id/pdf
+export const orderPdf = asyncHandler(async (req, res) => {
+  const [order, settings] = await Promise.all([
+    service.getOrder(req.params.id),
+    getSettings(),
+  ]);
+  generateRadiologyReportPdf(res, { order, settings });
+});

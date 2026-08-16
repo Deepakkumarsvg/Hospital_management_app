@@ -1,4 +1,5 @@
 import api from './api.js';
+import { downloadFile } from '../utils/download.js';
 
 export async function listPatients(params = {}) {
   const { data } = await api.get('/patients', { params });
@@ -28,4 +29,15 @@ export async function updatePatient(id, payload) {
 export async function deletePatient(id) {
   const { data } = await api.delete(`/patients/${id}`);
   return data;
+}
+
+export function exportPatients({ search, status } = {}, format = 'csv') {
+  const date = new Date().toISOString().slice(0, 10);
+  return downloadFile('/patients/export', `patients-${date}.${format}`, { search, status, format });
+}
+
+// Folds `duplicateId`'s records into `survivorId` and removes the duplicate profile.
+export async function mergePatients(survivorId, duplicateId) {
+  const { data } = await api.post(`/patients/${survivorId}/merge`, { duplicateId });
+  return data.data;
 }

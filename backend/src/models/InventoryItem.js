@@ -13,6 +13,7 @@ const inventoryItemSchema = new mongoose.Schema(
     currentStock: { type: Number, min: 0, default: 0 },
     minStock: { type: Number, min: 0, default: 5 },
     unitPrice: { type: Number, min: 0, default: 0 },
+    lastPurchasePrice: { type: Number, min: 0, default: null },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }

@@ -25,6 +25,14 @@ export const collectUnitSchema = z.object({
 
 export const issueUnitSchema = z.object({
   patient: objectId('patient'),
+  admission: objectId('admission').optional().nullable(),
+  reason: z.enum(['Surgery', 'Transfusion', 'Emergency', 'Other']).optional(),
+  chargeAmount: z.coerce.number().min(0).optional(),
+  overrideCompatibility: z.coerce.boolean().optional(),
+});
+
+export const reserveUnitSchema = z.object({
+  patient: objectId('patient'),
 });
 
 export const listUnitsQuerySchema = z.object({

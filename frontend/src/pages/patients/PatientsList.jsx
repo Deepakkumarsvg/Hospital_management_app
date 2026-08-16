@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Search, Plus, Users, Pencil, Trash2, Eye, RotateCcw,
+  Search, Plus, Users, Pencil, Trash2, Eye, RotateCcw, Download,
 } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
@@ -13,7 +13,7 @@ import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import PatientForm from './PatientForm.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
-import { listPatients, deletePatient } from '../../services/patientService.js';
+import { listPatients, deletePatient, exportPatients } from '../../services/patientService.js';
 import { CAN_EDIT_PATIENTS, CAN_DELETE_PATIENTS, formatDate } from '../../utils/constants.js';
 
 const STATUS_FILTER = [
@@ -42,6 +42,8 @@ export default function PatientsList() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const debounceRef = useRef();
+  const searchInputRef = useRef(null);
+  const [exporting, setExporting] = useState(null); // 'csv' | 'xlsx' | null
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -67,6 +69,14 @@ export default function PatientsList() {
       setPage(1);
       setSearch(val);
     }, 350);
+  };
+
+  const resetSearch = () => {
+    clearTimeout(debounceRef.current);
+    if (searchInputRef.current) searchInputRef.current.value = '';
+    setPage(1);
+    setSearch('');
+    setStatus('ALL');
   };
 
   const openCreate = () => {
@@ -96,21 +106,40 @@ export default function PatientsList() {
 
   const { items, pagination } = data;
 
+  const onExport = async (format) => {
+    setExporting(format);
+    try {
+      await exportPatients({ search, status }, format);
+    } catch (err) {
+      toast.error(err.message || 'Export failed');
+    } finally {
+      setExporting(null);
+    }
+  };
+
   return (
     <div className="space-y-5">
       {/* Header */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div className="card flex flex-col gap-2 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Patients</h1>
           <p className="mt-0.5 text-sm text-muted">
             {pagination.total} registered patient{pagination.total === 1 ? '' : 's'}
           </p>
         </div>
-        {canEdit && (
-          <Button onClick={openCreate}>
-            <Plus className="h-4 w-4" /> Register Patient
+        <div className="flex items-center gap-2">
+          <Button variant="outline" loading={exporting === 'csv'} disabled={!!exporting} onClick={() => onExport('csv')}>
+            <Download className="h-4 w-4" /> CSV
           </Button>
-        )}
+          <Button variant="outline" loading={exporting === 'xlsx'} disabled={!!exporting} onClick={() => onExport('xlsx')}>
+            <Download className="h-4 w-4" /> Excel
+          </Button>
+          {canEdit && (
+            <Button onClick={openCreate}>
+              <Plus className="h-4 w-4" /> Register Patient
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Toolbar */}
@@ -118,6 +147,7 @@ export default function PatientsList() {
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <input
+            ref={searchInputRef}
             className="input pl-9"
             placeholder="Search by UHID, name, phone or email…"
             onChange={onSearchChange}
@@ -151,7 +181,7 @@ export default function PatientsList() {
                   <Plus className="h-4 w-4" /> Register Patient
                 </Button>
               ) : search ? (
-                <Button variant="outline" onClick={() => window.location.reload()}>
+                <Button variant="outline" onClick={resetSearch}>
                   <RotateCcw className="h-4 w-4" /> Reset
                 </Button>
               ) : null

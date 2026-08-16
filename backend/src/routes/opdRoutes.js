@@ -8,6 +8,7 @@ import {
   createOpdVisitSchema,
   updateOpdVisitSchema,
   listOpdQuerySchema,
+  exportOpdQuerySchema,
 } from '../validators/opdValidator.js';
 
 const router = Router();
@@ -20,6 +21,7 @@ const CAN_EDIT = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.NURSE];
 router.post('/allergy-check', authorize(...CAN_EDIT), controller.allergyCheck);
 router.get('/', authorize(...CAN_VIEW), validate(listOpdQuerySchema, 'query'), controller.list);
 router.get('/stats', authorize(...CAN_VIEW), controller.stats);
+router.get('/export', authorize(...CAN_VIEW), validate(exportOpdQuerySchema, 'query'), controller.exportVisits);
 router.get('/:id', authorize(...CAN_VIEW), controller.get);
 router.get('/:id/pdf', authorize(...CAN_VIEW), controller.prescriptionPdf);
 

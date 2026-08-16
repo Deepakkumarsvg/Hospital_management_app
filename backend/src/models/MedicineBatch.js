@@ -22,5 +22,9 @@ medicineBatchSchema.virtual('expired').get(function () {
   return this.expiryDate < new Date();
 });
 
+// Same batch number received twice for the same medicine is almost always a
+// data-entry mistake — catch it at the DB level.
+medicineBatchSchema.index({ medicine: 1, batchNo: 1 }, { unique: true });
+
 register("MedicineBatch", medicineBatchSchema);
 export const MedicineBatch = tenantModel("MedicineBatch");

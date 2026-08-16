@@ -27,7 +27,7 @@ export default function ReceiveBatchModal({ medicine, onClose, onSaved }) {
       footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button type="submit" form="batch-f" loading={saving}>Receive</Button></>}>
       <form id="batch-f" onSubmit={submit} className="grid grid-cols-2 gap-4">
         <Input label="Batch No *" value={form.batchNo} onChange={(e) => setForm({ ...form, batchNo: e.target.value })} required />
-        <Input label="Expiry Date *" type="date" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} required />
+        <Input label="Expiry Date *" type="date" min={new Date().toISOString().slice(0, 10)} value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} required />
         <Input label="Quantity *" type="number" value={form.quantity} onChange={(e) => setForm({ ...form, quantity: e.target.value })} required />
         <Input label="Purchase ₹" type="number" step="0.01" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: e.target.value })} />
         <Input label="MRP ₹" type="number" step="0.01" value={form.mrp} onChange={(e) => setForm({ ...form, mrp: e.target.value })} />

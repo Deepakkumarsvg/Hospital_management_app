@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { FlaskConical, Scan } from 'lucide-react';
 import Badge from '../../components/ui/Badge.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
@@ -34,7 +34,14 @@ export default function PatientLabReports({ patientId }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><FlaskConical className="h-4 w-4" /> Laboratory</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><FlaskConical className="h-4 w-4" /> Laboratory</h3>
+          {lab.length > 0 && (
+            <Link to={`/laboratory?patient=${patientId}`} className="text-sm text-muted hover:text-fg hover:underline">
+              View all →
+            </Link>
+          )}
+        </div>
         {lab.length === 0 ? <p className="text-sm text-muted">No lab orders.</p> : (
           <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full min-w-[560px] text-sm">
@@ -61,7 +68,14 @@ export default function PatientLabReports({ patientId }) {
       </div>
 
       <div>
-        <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold"><Scan className="h-4 w-4" /> Radiology</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="flex items-center gap-2 text-sm font-semibold"><Scan className="h-4 w-4" /> Radiology</h3>
+          {rad.length > 0 && (
+            <Link to={`/radiology?patient=${patientId}`} className="text-sm text-muted hover:text-fg hover:underline">
+              View all →
+            </Link>
+          )}
+        </div>
         {rad.length === 0 ? <p className="text-sm text-muted">No radiology orders.</p> : (
           <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full min-w-[560px] text-sm">

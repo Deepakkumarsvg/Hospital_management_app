@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { CalendarDays, Plus } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
@@ -36,11 +37,16 @@ export default function PatientAppointments({ patient }) {
 
   return (
     <div className="space-y-4">
-      {canBook && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-3">
+        {items.length > 0 && (
+          <Link to={`/appointments?patient=${patientId}`} className="text-sm text-muted hover:text-fg hover:underline">
+            View all in Appointments →
+          </Link>
+        )}
+        {canBook && (
           <Button onClick={() => setFormOpen(true)}><Plus className="h-4 w-4" /> Book Appointment</Button>
-        </div>
-      )}
+        )}
+      </div>
 
       {loading ? (
         <Spinner full />

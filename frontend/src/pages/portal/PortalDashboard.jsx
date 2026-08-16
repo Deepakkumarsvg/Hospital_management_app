@@ -45,7 +45,7 @@ export default function PortalDashboard() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="card p-5">
         <h1 className="text-xl font-semibold">Hi, {user?.name?.split(' ')[0] || 'there'} 👋</h1>
         <p className="mt-0.5 text-sm text-muted">Welcome to your patient portal.</p>
       </div>

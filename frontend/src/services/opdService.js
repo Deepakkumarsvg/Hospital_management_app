@@ -1,4 +1,5 @@
 import api from './api.js';
+import { openPdf, downloadFile } from '../utils/download.js';
 
 export async function listVisits(params = {}) {
   const { data } = await api.get('/opd', { params });
@@ -25,9 +26,13 @@ export async function getOpdStats() {
   return data.data;
 }
 
-import { openPdf } from '../utils/download.js';
 export const downloadPrescriptionPdf = (id, visitNo) =>
   openPdf(`/opd/${id}/pdf`, `${visitNo || 'prescription'}.pdf`);
 
 export const checkAllergies = (patientId, medicines) =>
   api.post('/opd/allergy-check', { patientId, medicines }).then((r) => r.data.data);
+
+export function exportVisits({ search, status, doctor, patient, date } = {}, format = 'csv') {
+  const day = new Date().toISOString().slice(0, 10);
+  return downloadFile('/opd/export', `opd-visits-${day}.${format}`, { search, status, doctor, patient, date, format });
+}

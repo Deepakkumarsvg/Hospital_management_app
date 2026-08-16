@@ -1,5 +1,6 @@
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/doctorService.js';
+import { sendCsv, sendExcel } from '../utils/exporters.js';
 
 export const list = asyncHandler(async (req, res) => {
   const { items, pagination } = await service.listDoctors(req.query);
@@ -13,6 +14,14 @@ export const active = asyncHandler(async (req, res) => {
 
 export const stats = asyncHandler(async (_req, res) => {
   sendSuccess(res, { message: 'Doctor stats', data: await service.doctorStats() });
+});
+
+// GET /api/doctors/export?format=csv|xlsx&search=&department=&status=
+export const exportDoctors = asyncHandler(async (req, res) => {
+  const rows = await service.doctorRowsForExport(req.query);
+  const name = `doctors-${new Date().toISOString().slice(0, 10)}`;
+  if (req.query.format === 'xlsx') return sendExcel(res, name, rows, 'Doctors');
+  return sendCsv(res, name, rows);
 });
 
 // GET /api/doctors/me — the Doctor profile linked to the logged-in user.

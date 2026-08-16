@@ -8,8 +8,10 @@ import { createVisit } from '../../services/opdService.js';
 import { activeDepartments } from '../../services/departmentService.js';
 import { activeDoctors } from '../../services/doctorService.js';
 
-// Start a new OPD visit (walk-in or from a patient). onCreated(visit) fires after save.
-export default function OpdStartForm({ open, onClose, onCreated, presetPatient }) {
+// Start a new OPD visit (walk-in, from a patient, or from a checked-in
+// appointment — presetAppointment links the visit back so completing it
+// also completes the appointment). onCreated(visit) fires after save.
+export default function OpdStartForm({ open, onClose, onCreated, presetPatient, presetDoctor, presetDepartment, presetAppointment }) {
   const toast = useToast();
   const [departments, setDepartments] = useState([]);
   const [doctors, setDoctors] = useState([]);
@@ -23,12 +25,17 @@ export default function OpdStartForm({ open, onClose, onCreated, presetPatient }
     if (!open) return;
     activeDepartments().then(setDepartments).catch(() => {});
     setPatient(presetPatient || null);
-    setDepartment(''); setDoctor(''); setErrors({});
-  }, [open, presetPatient]);
+    setDepartment(presetDepartment || ''); setDoctor(presetDoctor || ''); setErrors({});
+  }, [open, presetPatient, presetDoctor, presetDepartment]);
 
+  // Keep the current doctor selected if it's still valid for the reloaded list
+  // (so a preset survives this reload instead of being cleared).
   useEffect(() => {
     if (!department) { setDoctors([]); setDoctor(''); return; }
-    activeDoctors(department).then((l) => { setDoctors(l); setDoctor(''); }).catch(() => setDoctors([]));
+    activeDoctors(department).then((l) => {
+      setDoctors(l);
+      setDoctor((prev) => (prev && l.some((d) => (d.id || d._id) === prev) ? prev : ''));
+    }).catch(() => setDoctors([]));
   }, [department]);
 
   const submit = async (e) => {
@@ -42,7 +49,10 @@ export default function OpdStartForm({ open, onClose, onCreated, presetPatient }
 
     setSaving(true);
     try {
-      const visit = await createVisit({ patient: patient.id || patient._id, department, doctor });
+      const visit = await createVisit({
+        patient: patient.id || patient._id, department, doctor,
+        appointment: presetAppointment || undefined,
+      });
       toast.success(`Visit started · ${visit.visitNo}`);
       onCreated(visit);
       onClose();

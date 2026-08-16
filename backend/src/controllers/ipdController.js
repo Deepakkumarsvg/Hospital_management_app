@@ -2,10 +2,19 @@ import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/ipdService.js';
 import { getSettings } from '../services/settingService.js';
 import { generateDischargeSummaryPdf } from '../utils/pdf.js';
+import { sendCsv, sendExcel } from '../utils/exporters.js';
 
 export const list = asyncHandler(async (req, res) => {
   const { items, pagination } = await service.listAdmissions(req.query);
   sendSuccess(res, { message: 'Admissions fetched', data: items, meta: pagination });
+});
+
+// GET /api/ipd/export?format=csv|xlsx&search=&status=&patient=
+export const exportAdmissions = asyncHandler(async (req, res) => {
+  const rows = await service.ipdRowsForExport(req.query);
+  const name = `ipd-admissions-${new Date().toISOString().slice(0, 10)}`;
+  if (req.query.format === 'xlsx') return sendExcel(res, name, rows, 'IPD Admissions');
+  return sendCsv(res, name, rows);
 });
 
 export const stats = asyncHandler(async (_req, res) =>
@@ -40,3 +49,6 @@ export const transfer = asyncHandler(async (req, res) =>
 
 export const discharge = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: 'Patient discharged', data: await service.dischargePatient(req.params.id, req.body) }));
+
+export const cancel = asyncHandler(async (req, res) =>
+  sendSuccess(res, { message: 'Admission cancelled', data: await service.cancelAdmission(req.params.id) }));

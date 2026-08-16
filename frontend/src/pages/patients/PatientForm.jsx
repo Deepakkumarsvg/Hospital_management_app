@@ -1,9 +1,11 @@
-import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useEffect, useState } from 'react';
+import { useForm, useFieldArray } from 'react-hook-form';
+import { Plus, X } from 'lucide-react';
 import Modal from '../../components/ui/Modal.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Button from '../../components/ui/Button.jsx';
+import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { createPatient, updatePatient } from '../../services/patientService.js';
 import {
@@ -16,9 +18,11 @@ const EMPTY = {
   address: { line: '', city: '', state: '', pincode: '' },
   emergencyContact: { name: '', relation: '', phone: '' },
   allergies: '', medicalHistory: '',
-  insurance: { provider: '', policyNumber: '', validTill: '' },
+  insurances: [],
   status: 'ACTIVE',
 };
+
+const BLANK_POLICY = { provider: '', policyNumber: '', validTill: '' };
 
 function SectionTitle({ children }) {
   return (
@@ -32,10 +36,15 @@ export default function PatientForm({ open, onClose, patient, onSaved }) {
   const toast = useToast();
   const isEdit = !!patient;
 
+  const [duplicate, setDuplicate] = useState(null); // { existing, values } while awaiting user confirmation
+  const [confirming, setConfirming] = useState(false);
+
   const {
-    register, handleSubmit, reset,
+    register, handleSubmit, reset, control,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: EMPTY });
+
+  const { fields: policyFields, append: addPolicy, remove: removePolicy } = useFieldArray({ control, name: 'insurances' });
 
   // Populate when opening for edit; reset to blank for create.
   useEffect(() => {
@@ -47,35 +56,57 @@ export default function PatientForm({ open, onClose, patient, onSaved }) {
         dateOfBirth: toDateInput(patient.dateOfBirth),
         address: { ...EMPTY.address, ...(patient.address || {}) },
         emergencyContact: { ...EMPTY.emergencyContact, ...(patient.emergencyContact || {}) },
-        insurance: {
-          ...EMPTY.insurance,
-          ...(patient.insurance || {}),
-          validTill: toDateInput(patient.insurance?.validTill),
-        },
+        insurances: (patient.insurances || []).map((p) => ({ ...BLANK_POLICY, ...p, validTill: toDateInput(p.validTill) })),
       });
     } else {
       reset(EMPTY);
     }
+    setDuplicate(null);
   }, [open, patient, reset]);
 
+  const save = async (payload) => {
+    const saved = isEdit
+      ? await updatePatient(patient.id || patient._id, payload)
+      : await createPatient(payload);
+    toast.success(isEdit ? 'Patient updated' : `Patient registered · ${saved.uhid}`);
+    onSaved?.(saved);
+    onClose();
+  };
+
   const onSubmit = async (values) => {
-    // Drop empty insurance.validTill so the backend doesn't get an invalid date.
-    const payload = { ...values };
-    if (!payload.insurance?.validTill) delete payload.insurance.validTill;
+    const payload = {
+      ...values,
+      // Drop blank rows and empty validTill dates so the backend doesn't choke on invalid dates.
+      insurances: (values.insurances || [])
+        .filter((p) => p.provider || p.policyNumber || p.validTill)
+        .map((p) => (p.validTill ? p : { ...p, validTill: undefined })),
+    };
 
     try {
-      const saved = isEdit
-        ? await updatePatient(patient.id || patient._id, payload)
-        : await createPatient(payload);
-      toast.success(isEdit ? 'Patient updated' : `Patient registered · ${saved.uhid}`);
-      onSaved?.(saved);
-      onClose();
+      await save(payload);
     } catch (err) {
+      if (!isEdit && err.code === 'DUPLICATE_PATIENT') {
+        setDuplicate({ existing: err.details?.existing, payload });
+        return;
+      }
       toast.error(err.message || 'Could not save patient');
     }
   };
 
+  const confirmDuplicateAndSave = async () => {
+    setConfirming(true);
+    try {
+      await save({ ...duplicate.payload, confirmDuplicate: true });
+      setDuplicate(null);
+    } catch (err) {
+      toast.error(err.message || 'Could not save patient');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
   return (
+    <>
     <Modal
       open={open}
       onClose={onClose}
@@ -153,11 +184,44 @@ export default function PatientForm({ open, onClose, patient, onSaved }) {
           />
         </div>
 
-        <SectionTitle>Insurance (optional)</SectionTitle>
-        <Input id="insProvider" label="Provider" placeholder="Star Health" {...register('insurance.provider')} />
-        <Input id="insPolicy" label="Policy Number" {...register('insurance.policyNumber')} />
-        <Input id="insValid" type="date" label="Valid Till" {...register('insurance.validTill')} />
+        <div className="col-span-full mt-2 flex items-center justify-between">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">Insurance Policies (optional)</h3>
+          <button type="button" onClick={() => addPolicy(BLANK_POLICY)} className="inline-flex items-center gap-1 text-xs font-medium text-fg hover:underline">
+            <Plus className="h-3.5 w-3.5" /> Add Policy
+          </button>
+        </div>
+        {policyFields.length === 0 && (
+          <p className="col-span-full text-sm text-muted">No insurance policies added.</p>
+        )}
+        {policyFields.map((field, i) => (
+          <div key={field.id} className="col-span-full grid grid-cols-1 gap-3 rounded-lg border border-border p-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+            <Input id={`insProvider-${i}`} label="Provider" placeholder="Star Health" {...register(`insurances.${i}.provider`)} />
+            <Input id={`insPolicy-${i}`} label="Policy Number" {...register(`insurances.${i}.policyNumber`)} />
+            <Input id={`insValid-${i}`} type="date" label="Valid Till" {...register(`insurances.${i}.validTill`)} />
+            <div className="flex items-end">
+              <button type="button" onClick={() => removePolicy(i)} className="btn-ghost h-10 w-10 !p-0 text-red-500 hover:bg-red-500/10" aria-label="Remove policy">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        ))}
       </form>
     </Modal>
+
+    <ConfirmDialog
+      open={!!duplicate}
+      onClose={() => setDuplicate(null)}
+      onConfirm={confirmDuplicateAndSave}
+      loading={confirming}
+      danger={false}
+      title="Possible duplicate patient"
+      confirmLabel="Register anyway"
+      message={
+        duplicate?.existing
+          ? `A patient with this phone number is already registered: ${duplicate.existing.fullName} (${duplicate.existing.uhid}, ${duplicate.existing.status}). Register a new, separate patient anyway?`
+          : ''
+      }
+    />
+    </>
   );
 }

@@ -1,9 +1,12 @@
+import { forwardRef } from 'react';
 import { cn } from '../../utils/cn.js';
 
-export default function Card({ className, children, ...props }) {
+const Card = forwardRef(function Card({ className, children, ...props }, ref) {
   return (
-    <div className={cn('card p-5', className)} {...props}>
+    <div ref={ref} className={cn('card p-5', className)} {...props}>
       {children}
     </div>
   );
-}
+});
+
+export default Card;

@@ -6,7 +6,7 @@ import { validate } from '../middleware/validate.js';
 import { ROLES } from '../config/roles.js';
 import {
   admitSchema, updateAdmissionSchema, nursingNoteSchema,
-  transferBedSchema, dischargeSchema, listIpdQuerySchema,
+  transferBedSchema, dischargeSchema, listIpdQuerySchema, exportIpdQuerySchema,
 } from '../validators/ipdValidator.js';
 
 const router = Router();
@@ -18,6 +18,7 @@ const CAN_NURSE = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.NURSE];
 
 router.get('/', authorize(...CAN_VIEW), validate(listIpdQuerySchema, 'query'), controller.list);
 router.get('/stats', authorize(...CAN_VIEW), controller.stats);
+router.get('/export', authorize(...CAN_VIEW), validate(exportIpdQuerySchema, 'query'), controller.exportAdmissions);
 router.get('/:id', authorize(...CAN_VIEW), controller.get);
 router.get('/:id/discharge-pdf', authorize(...CAN_VIEW), controller.dischargePdf);
 
@@ -26,5 +27,6 @@ router.put('/:id', authorize(...CAN_ADMIT), validate(updateAdmissionSchema), con
 router.post('/:id/notes', authorize(...CAN_NURSE), validate(nursingNoteSchema), controller.addNote);
 router.patch('/:id/transfer', authorize(...CAN_ADMIT), validate(transferBedSchema), controller.transfer);
 router.patch('/:id/discharge', authorize(...CAN_ADMIT), validate(dischargeSchema), controller.discharge);
+router.patch('/:id/cancel', authorize(...CAN_ADMIT), controller.cancel);
 
 export default router;
