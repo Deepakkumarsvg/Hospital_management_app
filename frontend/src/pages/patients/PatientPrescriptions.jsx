@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Pill } from 'lucide-react';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { listVisits } from '../../services/opdService.js';
@@ -21,7 +21,7 @@ export default function PatientPrescriptions({ patientId }) {
       .finally(() => setLoading(false));
   }, [patientId, toast]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   if (visits.length === 0) return <EmptyState icon={Pill} title="No prescriptions" description="No medicines have been prescribed to this patient yet." />;
 
   return (

@@ -6,8 +6,14 @@ import { useAuth } from '../context/AuthContext.jsx';
 import Input from '../components/ui/Input.jsx';
 import Button from '../components/ui/Button.jsx';
 import ThemeToggle from '../components/ThemeToggle.jsx';
+import AuthBackdrop from '../components/AuthBackdrop.jsx';
 import { setTenant, getTenant } from '../services/api.js';
 import { getPublicSettings, logoUrl } from '../services/settingService.js';
+
+// Frosted surface shared by the card and the fields inside it. Falls back to
+// a near-opaque panel where backdrop-filter isn't supported, so the form is
+// never unreadable against the decorated background.
+const GLASS = 'border border-fg/10 bg-elevated/80 backdrop-blur-xl supports-[backdrop-filter]:bg-elevated/55';
 
 export default function Login() {
   const { login, isAuthenticated, loading, role } = useAuth();
@@ -17,27 +23,48 @@ export default function Login() {
   const [serverError, setServerError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [brand, setBrand] = useState(null);
-
-  // Best-effort branding — the login screen still works fine if this fails
-  // (e.g. an unreachable tenant slug), just with the generic name/mark.
-  useEffect(() => { getPublicSettings().then(setBrand).catch(() => {}); }, []);
+  const [brandTenant, setBrandTenant] = useState(getTenant());
 
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm({ defaultValues: { email: '', password: '', hospital: getTenant() } });
+
+  const hospital = watch('hospital');
+
+  // Branding follows the hospital code as it's typed, so you can see which
+  // hospital you're signing in to before submitting. Best-effort — an unknown
+  // slug just falls back to the generic name/mark instead of erroring.
+  useEffect(() => {
+    const slug = (hospital || 'default').trim().toLowerCase();
+    let alive = true;
+    const t = setTimeout(() => {
+      getPublicSettings(slug)
+        .then((s) => alive && setBrand(s))
+        .catch(() => alive && setBrand(null))
+        .finally(() => alive && setBrandTenant(slug));
+    }, 350);
+    return () => { alive = false; clearTimeout(t); };
+  }, [hospital]);
+
+  // A stale "wrong password" banner shouldn't outlive the correction.
+  useEffect(() => {
+    const sub = watch(() => setServerError((e) => (e ? '' : e)));
+    return () => sub.unsubscribe();
+  }, [watch]);
 
   // Already logged in → bounce to the right home for the role.
   if (!loading && isAuthenticated) {
     return <Navigate to={location.state?.from?.pathname || homeFor(role)} replace />;
   }
 
-  const onSubmit = async ({ email, password, hospital }) => {
+  const onSubmit = async ({ email, password, hospital: slug }) => {
     setServerError('');
     try {
       // Pin the chosen hospital before authenticating so the request is scoped.
-      setTenant((hospital || 'default').trim().toLowerCase());
+      setTenant((slug || 'default').trim().toLowerCase());
       const u = await login(email, password);
       navigate(location.state?.from?.pathname || homeFor(u.role), { replace: true });
     } catch (err) {
@@ -45,37 +72,42 @@ export default function Login() {
     }
   };
 
-  const logo = logoUrl(brand);
+  const logo = logoUrl(brand, brandTenant);
+  const hospitalField = register('hospital');
+  const fieldClass = 'border-fg/10 bg-elevated/60 backdrop-blur-sm';
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-bg px-4 py-10">
-      {/* Soft decorative glow — stays inside the app's own monochrome palette. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute left-1/2 top-0 h-[420px] w-[420px] -translate-x-1/2 -translate-y-1/3 rounded-full bg-fg/[0.05] blur-3xl dark:bg-fg/[0.07]" />
-      </div>
+    // Sized to the viewport, and deliberately compact so the whole form fits
+    // without scrolling even on a short window or at 125% browser zoom.
+    <div className="relative flex min-h-[100dvh] items-center justify-center px-4 py-6">
+      <AuthBackdrop />
 
-      <div className="absolute right-4 top-4">
+      <div className={`fixed right-4 top-4 z-10 rounded-xl ${GLASS}`}>
         <ThemeToggle />
       </div>
 
-      <div className="w-full max-w-sm animate-fadeIn">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <span className="mb-4 flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-accent text-accent-fg shadow-lg shadow-fg/10">
-            {logo ? <img src={logo} alt="" className="h-full w-full object-contain p-2" /> : <Activity className="h-7 w-7" />}
+      <div className="relative w-full max-w-sm animate-fadeIn">
+        <div className="mb-4 flex items-center justify-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-accent text-accent-fg shadow-lg shadow-fg/10 ring-1 ring-fg/10">
+            {logo ? <img src={logo} alt="" className="h-full w-full object-contain p-1.5" /> : <Activity className="h-6 w-6" />}
           </span>
-          <h1 className="text-xl font-semibold tracking-tight">{brand?.hospitalName || 'Hospital Management System'}</h1>
-          <p className="mt-1 text-sm text-muted">{brand?.tagline || 'Sign in to your account'}</p>
+          <div className="min-w-0">
+            <h1 className="truncate text-lg font-semibold leading-tight tracking-tight">
+              {brand?.hospitalName || 'Hospital Management System'}
+            </h1>
+            <p className="truncate text-xs text-muted">{brand?.tagline || 'Sign in to your account'}</p>
+          </div>
         </div>
 
-        <div className="card p-6 shadow-xl shadow-fg/[0.04]">
+        <div className={`rounded-xl p-5 shadow-2xl shadow-fg/10 ${GLASS}`}>
           {serverError && (
-            <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500">
+            <div role="alert" className="mb-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-500 backdrop-blur-sm">
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
               <span>{serverError}</span>
             </div>
           )}
 
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-3" noValidate>
             <Input
               id="email"
               type="email"
@@ -83,6 +115,8 @@ export default function Login() {
               icon={Mail}
               placeholder="admin@hms.local"
               autoComplete="email"
+              autoFocus
+              className={fieldClass}
               error={errors.email?.message}
               {...register('email', {
                 required: 'Email is required',
@@ -97,13 +131,13 @@ export default function Login() {
                 icon={Lock}
                 placeholder="••••••••"
                 autoComplete="current-password"
+                className={fieldClass}
                 error={errors.password?.message}
                 suffix={
                   <button
                     type="button"
-                    tabIndex={-1}
                     onClick={() => setShowPassword((s) => !s)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted transition-colors hover:text-fg focus:outline-none focus-visible:ring-2 focus-visible:ring-fg/40"
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
                     {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -111,7 +145,7 @@ export default function Login() {
                 }
                 {...register('password', { required: 'Password is required' })}
               />
-              <div className="mt-1.5 text-right">
+              <div className="mt-1 text-right">
                 <Link to="/forgot-password" className="text-xs text-muted hover:text-fg hover:underline">Forgot password?</Link>
               </div>
             </div>
@@ -121,23 +155,33 @@ export default function Login() {
               icon={Building2}
               placeholder="default"
               autoCapitalize="off"
+              autoCorrect="off"
               spellCheck={false}
-              {...register('hospital')}
+              className={fieldClass}
+              {...hospitalField}
+              // Slugs are always lowercase and unspaced — normalise as typed
+              // so the field shows exactly what gets sent.
+              onChange={(e) => {
+                e.target.value = e.target.value.toLowerCase().replace(/\s+/g, '');
+                hospitalField.onChange(e);
+              }}
             />
             <Button type="submit" loading={isSubmitting} className="w-full">
-              Sign In
+              {isSubmitting ? 'Signing in…' : 'Sign In'}
             </Button>
           </form>
         </div>
 
-        <p className="mt-6 text-center text-sm text-muted">
-          Are you a patient? <Link to="/portal/register" className="font-medium text-fg underline">Create an account</Link>
+        <p className="mt-3 text-center text-xs text-muted">
+          Are you a patient?{' '}
+          <Link to="/portal/register" className="font-medium text-fg hover:underline">Create an account</Link>
         </p>
+
         {/* Seeded demo credentials — only ever shown on a dev build, never
             printed on a deployed login screen. */}
         {import.meta.env.DEV && (
-          <div className="mt-4 rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-center text-xs text-muted">
-            Dev login: <span className="font-mono font-medium text-fg">admin@hms.local</span> / <span className="font-mono font-medium text-fg">Admin@123</span>
+          <div className={`mt-3 rounded-lg px-3 py-1.5 text-center text-[11px] text-muted ${GLASS}`}>
+            Dev: <span className="font-mono font-medium text-fg">admin@hms.local</span> / <span className="font-mono font-medium text-fg">Admin@123</span>
           </div>
         )}
       </div>

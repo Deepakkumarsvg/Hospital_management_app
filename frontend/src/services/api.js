@@ -28,13 +28,31 @@ export function setTenant(slug) {
   else localStorage.removeItem(TENANT_KEY);
 }
 
-// Attach the JWT + tenant to every request.
+// Attach the JWT + tenant to every request. A call can target a different
+// hospital for one request by passing `{ tenant: 'slug' }` in its config —
+// used by the login screen to preview a tenant's branding before committing
+// to it — without touching the stored selection.
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) config.headers.Authorization = `Bearer ${token}`;
-  config.headers['X-Tenant'] = getTenant();
+  config.headers['X-Tenant'] = config.tenant || getTenant();
   return config;
 });
+
+// What to show when the server gave us no message of its own. Axios's own
+// text ("Request failed with status code 500") is meaningless to a
+// receptionist staring at a login screen, so it is never surfaced as-is.
+function fallbackMessage(status, error) {
+  if (error.code === 'ECONNABORTED') return 'The server took too long to respond. Please try again.';
+  if (!status) return 'Cannot reach the server. Check your connection and try again.';
+
+  if (status === 503) return 'The service is temporarily unavailable. Please try again in a moment.';
+  if (status === 429) return 'Too many attempts. Please wait a moment and try again.';
+  if (status >= 500) return 'Something went wrong on the server. Please try again, or contact IT if it continues.';
+  if (status === 404) return 'That item could not be found.';
+  if (status === 403) return 'You do not have permission to do that.';
+  return 'Something went wrong. Please try again.';
+}
 
 // Normalise errors so UI can always read err.message / err.code.
 api.interceptors.response.use(
@@ -50,10 +68,14 @@ api.interceptors.response.use(
       if (window.location.pathname !== '/login') window.location.assign('/login');
     }
 
+    // A non-JSON body (an HTML error page from a proxy, say) leaves `data` as
+    // a string — that isn't a message we should show either.
+    const serverMessage = typeof data?.message === 'string' ? data.message : null;
+
     return Promise.reject({
       status,
-      code: data?.error || 'NETWORK_ERROR',
-      message: data?.message || error.message || 'Something went wrong',
+      code: data?.error || (status ? 'SERVER_ERROR' : 'NETWORK_ERROR'),
+      message: serverMessage || fallbackMessage(status, error),
       details: data?.details,
     });
   }

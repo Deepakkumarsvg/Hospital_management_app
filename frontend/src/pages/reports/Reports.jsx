@@ -12,7 +12,7 @@ import {
 import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton, StatsSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getReportSummary, getDoctorActivity, exportSummary, downloadSummaryPdf, exportInvoices, exportDoctorActivity } from '../../services/reportService.js';
@@ -197,7 +197,13 @@ export default function Reports() {
         </div>
       </div>
 
-      {loading ? <Spinner full /> : error ? (
+      {loading ? (
+        // Reports open with a tile grid, not a table — mirror that shape.
+        <div className="space-y-5">
+          <StatsSkeleton count={8} />
+          <ListSkeleton card rows={4} />
+        </div>
+      ) : error ? (
         <EmptyState icon={AlertTriangle} title="Could not load the report" description="Something went wrong fetching the summary."
           action={<Button onClick={load}><RefreshCw className="h-4 w-4" /> Retry</Button>} />
       ) : !data ? null : (

@@ -8,7 +8,7 @@ import {
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import PatientForm from './PatientForm.jsx';
 import PatientAppointments from './PatientAppointments.jsx';
 import PatientDocuments from './PatientDocuments.jsx';
@@ -192,7 +192,7 @@ export default function PatientDetail() {
 
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton stats={0} />;
   if (!patient) return null;
 
   const initials = (patient.fullName || 'P').split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase();

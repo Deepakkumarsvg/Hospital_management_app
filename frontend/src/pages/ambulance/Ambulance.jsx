@@ -6,7 +6,7 @@ import Badge from '../../components/ui/Badge.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
@@ -86,7 +86,7 @@ function Fleet({ canManage, canAdmin, onChanged, onViewTrips }) {
     } catch (err) { toast.error(err.message || 'Failed'); } finally { setSaving(false); }
   };
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
 
   const filtered = typeFilter === 'ALL' ? items : items.filter((a) => a.type === typeFilter);
 
@@ -274,7 +274,7 @@ function Trips({ canManage, onChanged, initialAmbulance, onConsumedInitialAmbula
       </div>
 
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? (
+        {loading ? <ListSkeleton /> : items.length === 0 ? (
           <EmptyState icon={MapPin} title={search || ambulance || status !== 'ALL' ? 'No trips match your filters' : 'No trips'} />
         ) : (
           <>

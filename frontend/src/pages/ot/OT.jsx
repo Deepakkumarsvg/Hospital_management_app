@@ -7,6 +7,7 @@ import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
@@ -239,7 +240,7 @@ function Surgeries({ canManage }) {
 
   const doStatus = async (s, st) => { setBusy(s.id || s._id); try { await changeSurgeryStatus(s.id || s._id, st); toast.success(`Marked ${SURGERY_STATUS_META[st].label}`); load(); } catch (e) { toast.error(e.message); } finally { setBusy(null); } };
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 print:hidden">
@@ -312,7 +313,7 @@ function Theatres({ canAdmin }) {
   const open = (t) => { setEditing(t); setForm(t ? { name: t.name, code: t.code, specialization: t.specialization || '', status: t.status } : EMPTY); setFormOpen(true); };
   const submit = async (e) => { e.preventDefault(); setSaving(true); try { editing ? await updateTheatre(editing.id || editing._id, form) : await createTheatre(form); toast.success('Saved'); setFormOpen(false); load(); } catch (e2) { toast.error(e2.message); } finally { setSaving(false); } };
   const del = async () => { try { await deleteTheatre(deleting.id || deleting._id); toast.success('Deleted'); setDeleting(null); load(); } catch (e) { toast.error(e.message); } };
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   return (
     <div className="space-y-4">
       {canAdmin && <div className="flex justify-end"><Button onClick={() => open(null)}><Plus className="h-4 w-4" /> New Theatre</Button></div>}

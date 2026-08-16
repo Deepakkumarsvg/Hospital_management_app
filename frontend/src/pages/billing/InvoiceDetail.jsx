@@ -10,7 +10,7 @@ import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getInvoice, recordPayment, updateInvoice, cancelInvoice, refundInvoice, downloadInvoicePdf } from '../../services/billingService.js';
@@ -193,7 +193,7 @@ export default function InvoiceDetail() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton stats={0} />;
   if (!invoice) return null;
   const meta = INVOICE_STATUS_META[invoice.status] || { label: invoice.status, tone: 'neutral' };
   const closed = ['REFUNDED', 'CANCELLED'].includes(invoice.status);

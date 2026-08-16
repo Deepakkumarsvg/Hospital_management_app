@@ -11,6 +11,7 @@ import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -208,7 +209,7 @@ export default function ClaimDetail() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton stats={0} />;
   if (!claim) return null;
   const meta = CLAIM_STATUS_META[claim.status] || { label: claim.status, tone: 'neutral' };
   const nexts = CLAIM_NEXT[claim.status] || [];

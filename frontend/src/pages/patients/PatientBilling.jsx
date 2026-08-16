@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Receipt } from 'lucide-react';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { listInvoices } from '../../services/billingService.js';
@@ -21,7 +21,7 @@ export default function PatientBilling({ patientId }) {
       .finally(() => setLoading(false));
   }, [patientId, toast]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   if (items.length === 0) return <EmptyState icon={Receipt} title="No invoices" description="This patient has no invoices yet." />;
 
   return (

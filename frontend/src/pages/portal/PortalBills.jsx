@@ -3,7 +3,7 @@ import { Receipt, FileDown, CreditCard } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getPortalInvoices, downloadPortalInvoicePdf, payInvoiceOnline } from '../../services/portalService.js';
@@ -27,7 +27,7 @@ export default function PortalBills() {
     finally { setPaying(null); }
   };
 
-  if (items === null) return <Spinner full />;
+  if (items === null) return <PageSkeleton stats={0} />;
 
   const totalDue = items.reduce((s, i) => s + (i.dueAmount || 0), 0);
 

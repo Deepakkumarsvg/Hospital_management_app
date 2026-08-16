@@ -6,7 +6,7 @@ import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import AppointmentForm from '../appointments/AppointmentForm.jsx';
 import AdmitForm from '../ipd/AdmitForm.jsx';
@@ -136,7 +136,7 @@ export default function OpdConsultation() {
     return () => clearTimeout(t);
   }, [meds, visit]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton stats={0} />;
   if (!visit) return null;
 
   const locked = visit.status !== 'OPEN' || !canEdit;

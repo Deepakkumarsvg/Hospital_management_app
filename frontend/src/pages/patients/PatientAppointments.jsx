@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { CalendarDays, Plus } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import AppointmentForm from '../appointments/AppointmentForm.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -49,7 +49,7 @@ export default function PatientAppointments({ patient }) {
       </div>
 
       {loading ? (
-        <Spinner full />
+        <ListSkeleton card />
       ) : items.length === 0 ? (
         <EmptyState icon={CalendarDays} title="No appointments"
           description={canBook ? 'Book an appointment for this patient.' : 'No appointments yet.'}

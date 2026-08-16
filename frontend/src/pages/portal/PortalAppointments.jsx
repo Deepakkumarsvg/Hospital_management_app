@@ -6,7 +6,7 @@ import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -122,7 +122,7 @@ export default function PortalAppointments() {
         <Button onClick={() => setBookOpen(true)}><Plus className="h-4 w-4" /> Book</Button>
       </div>
 
-      {loading ? <Spinner full /> : items.length === 0 ? (
+      {loading ? <ListSkeleton /> : items.length === 0 ? (
         <EmptyState icon={CalendarDays} title="No appointments yet" description="Book your first appointment to get started." />
       ) : (
         <div className="space-y-3">

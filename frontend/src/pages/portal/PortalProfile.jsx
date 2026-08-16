@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { User } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getPortalProfile } from '../../services/portalService.js';
 import { formatDate } from '../../utils/constants.js';
@@ -23,7 +23,7 @@ export default function PortalProfile() {
     getPortalProfile().then(setP).catch((e) => toast.error(e.message || 'Failed to load'));
   }, [toast]);
 
-  if (!p) return <Spinner full />;
+  if (!p) return <PageSkeleton stats={0} />;
 
   const addr = [p.address?.line, p.address?.city, p.address?.state, p.address?.pincode].filter(Boolean).join(', ');
 

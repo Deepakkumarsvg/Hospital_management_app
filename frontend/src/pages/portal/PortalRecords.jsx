@@ -3,7 +3,7 @@ import { FileText, FlaskConical, Scan, FileDown } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { cn } from '../../utils/cn.js';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -53,7 +53,7 @@ export default function PortalRecords() {
         ))}
       </div>
 
-      {loading || rows === null ? <Spinner full /> : rows.length === 0 ? (
+      {loading || rows === null ? <ListSkeleton card /> : rows.length === 0 ? (
         <EmptyState icon={FileText} title="Nothing here yet" description="Your records will appear here after your visits." />
       ) : tab === 'prescriptions' ? (
         <div className="space-y-3">

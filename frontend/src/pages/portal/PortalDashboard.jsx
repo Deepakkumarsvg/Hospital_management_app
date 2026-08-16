@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { CalendarDays, FileText, FlaskConical, Receipt, IndianRupee, ArrowRight } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getPortalSummary, getPortalAppointments } from '../../services/portalService.js';
@@ -40,7 +40,7 @@ export default function PortalDashboard() {
       .finally(() => setLoading(false));
   }, [toast]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton />;
   const s = summary || {};
 
   return (

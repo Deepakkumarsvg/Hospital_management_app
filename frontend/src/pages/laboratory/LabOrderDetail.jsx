@@ -8,7 +8,7 @@ import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getLabOrder, changeLabStatus, enterLabResults, downloadLabReportPdf } from '../../services/labService.js';
@@ -70,7 +70,7 @@ export default function LabOrderDetail() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton stats={0} />;
   if (!order) return null;
 
   const meta = LAB_STATUS_META[order.status] || { label: order.status, tone: 'neutral' };

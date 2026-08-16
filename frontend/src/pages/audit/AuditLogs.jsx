@@ -6,7 +6,7 @@ import Select from '../../components/ui/Select.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -130,7 +130,7 @@ export default function AuditLogs() {
       </div>
 
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? <EmptyState icon={ScrollText} title="No logs" /> : (
+        {loading ? <ListSkeleton /> : items.length === 0 ? <EmptyState icon={ScrollText} title="No logs" /> : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm">

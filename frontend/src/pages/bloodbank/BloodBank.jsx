@@ -11,6 +11,7 @@ import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import PatientPicker from '../appointments/PatientPicker.jsx';
@@ -56,7 +57,7 @@ function Stock({ refreshKey }) {
     getStock().then(setStock).catch((e) => toast.error(e.message)).finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [refreshKey]);
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-3 gap-4">
@@ -304,7 +305,7 @@ function Units({ canManage, onChanged }) {
     return ids;
   }, [items]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   const filter = [{ value: 'ALL', label: 'All' }, ...Object.entries(UNIT_STATUS_META).map(([v, m]) => ({ value: v, label: m.label }))];
 
   const exportUnits = () => downloadCsv(`blood-units-${status.toLowerCase()}.csv`, toCsv(items, [
@@ -429,7 +430,7 @@ function Donors({ canManage, onChanged }) {
     { label: 'Eligible', value: (d) => d.eligible ? 'Yes' : 'No' },
   ]));
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3">

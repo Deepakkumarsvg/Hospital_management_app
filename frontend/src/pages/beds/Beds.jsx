@@ -10,7 +10,7 @@ import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -101,7 +101,7 @@ export default function Beds() {
     }
   };
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton />;
   const totals = map?.totals || {};
 
   return (

@@ -5,7 +5,7 @@ import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -94,7 +94,7 @@ export default function Hospitals() {
 
   const copy = (slug) => { navigator.clipboard?.writeText(slug); setCopied(slug); setTimeout(() => setCopied(''), 1500); };
 
-  if (tenants === null) return <Spinner full />;
+  if (tenants === null) return <PageSkeleton stats={0} />;
 
   return (
     <div className="space-y-5">

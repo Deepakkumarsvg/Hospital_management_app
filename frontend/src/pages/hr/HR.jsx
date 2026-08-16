@@ -9,7 +9,7 @@ import Badge from '../../components/ui/Badge.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
@@ -111,7 +111,7 @@ function Employees() {
       </div>
 
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? (
+        {loading ? <ListSkeleton /> : items.length === 0 ? (
           <EmptyState icon={Users} title={search ? 'No employees match your search' : 'No employees'} />
         ) : (
           <>
@@ -252,7 +252,7 @@ function AttendanceTab() {
             <div className="w-full sm:w-48"><Input type="date" label="Date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
             <Button variant="outline" onClick={markAllPresent} loading={bulkBusy}><CheckCheck className="h-4 w-4" /> Mark All Present</Button>
           </div>
-          {loading ? <Spinner full /> : employees.length === 0 ? <EmptyState icon={CalendarCheck} title="No active employees" /> : (
+          {loading ? <ListSkeleton /> : employees.length === 0 ? <EmptyState icon={CalendarCheck} title="No active employees" /> : (
             <div className="card overflow-x-auto">
               <table className="w-full min-w-[560px] text-sm">
                 <thead><tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted"><th className="px-4 py-3 font-medium">Employee</th><th className="px-4 py-3 font-medium">Marked</th><th className="px-4 py-3 text-right font-medium">Mark</th></tr></thead>
@@ -284,7 +284,7 @@ function AttendanceTab() {
             <div className="w-full sm:w-44"><Select label="Month" options={MONTH_OPTIONS} value={month} onChange={(e) => setMonth(e.target.value)} /></div>
             <div className="w-full sm:w-28"><Input label="Year" type="number" value={year} onChange={(e) => setYear(e.target.value)} /></div>
           </div>
-          {loading ? <Spinner full /> : summary.length === 0 ? <EmptyState icon={CalendarCheck} title="No active employees" /> : (
+          {loading ? <ListSkeleton /> : summary.length === 0 ? <EmptyState icon={CalendarCheck} title="No active employees" /> : (
             <div className="card overflow-x-auto">
               <table className="w-full min-w-[680px] text-sm">
                 <thead>
@@ -376,7 +376,7 @@ function Leaves() {
       </div>
 
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? <EmptyState icon={CalendarCheck} title="No leave requests" /> : (
+        {loading ? <ListSkeleton /> : items.length === 0 ? <EmptyState icon={CalendarCheck} title="No leave requests" /> : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[760px] text-sm">
@@ -575,7 +575,7 @@ function Payroll() {
       )}
 
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? (
+        {loading ? <ListSkeleton /> : items.length === 0 ? (
           <EmptyState icon={IndianRupee} title="No payslips for this period" description="Click Generate Payroll to compute pay from attendance." />
         ) : (
           <>
