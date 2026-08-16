@@ -58,10 +58,20 @@ hospital-management/
 - Node.js 18+
 - MongoDB running locally (or a connection string)
 
-> No local MongoDB? Run one with Docker:
+> **Run MongoDB as a single-node replica set.** Multi-collection writes (goods
+> receipt) use transactions, which a standalone `mongod` cannot serve. The app
+> logs a warning at startup if it detects standalone mode.
 > ```bash
-> docker run -d --name hms-mongo -p 27017:27017 -v hms-mongo-data:/data/db mongo:7
+> docker run -d --name hms-mongo -p 27017:27017 -v hms-mongo-data:/data/db \
+>   mongo:7 mongod --replSet rs0 --bind_ip_all
+> docker exec hms-mongo mongosh --quiet --eval \
+>   "rs.initiate({_id:'rs0',members:[{_id:0,host:'localhost:27017'}]})"
 > ```
+> Then use `MONGODB_URI=mongodb://localhost:27017/hospital_management?replicaSet=rs0`.
+>
+> `docker compose up` (below) sets this up for you.
+>
+> `npm test` needs no MongoDB at all — it boots its own in-memory replica set.
 
 ### 1. Backend
 ```bash
@@ -71,7 +81,8 @@ npm install
 npm run seed              # roles, departments, admin
 npm run seed:fresh        # + rich demo data (doctors, patients, catalogues, wards/beds, stock)
 npm run dev               # http://localhost:5000
-npm test                  # run the Vitest suite (needs a local MongoDB)
+npm test                  # Vitest suite — boots its own in-memory MongoDB
+npm run migrate:slotday   # existing deployments only: backfill + build slot indexes
 ```
 
 > **Demo logins after `seed:fresh`** — one account per role, password pattern

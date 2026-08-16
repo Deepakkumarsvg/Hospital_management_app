@@ -1,7 +1,7 @@
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/settingService.js';
 import { audit } from '../utils/audit.js';
-import { resolvePath } from '../config/storage.js';
+import { serveStoredFile } from '../utils/serveFile.js';
 import { ApiError } from '../utils/ApiError.js';
 
 export const get = asyncHandler(async (_req, res) =>
@@ -25,8 +25,8 @@ export const uploadLogo = asyncHandler(async (req, res) => {
 export const getLogo = asyncHandler(async (_req, res) => {
   const settings = await service.getSettings();
   if (!settings.logo?.storageKey) throw ApiError.notFound('No logo set', 'LOGO_NOT_SET');
-  res.setHeader('Content-Type', settings.logo.mimeType);
-  res.sendFile(resolvePath(settings.logo.storageKey));
+  // Rendered in an <img> on the branding screen, so it is served inline.
+  serveStoredFile(res, settings.logo, { inline: true });
 });
 
 export const removeLogo = asyncHandler(async (req, res) => {

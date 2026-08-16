@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import mongoose from 'mongoose';
 import authRoutes from './authRoutes.js';
 import userRoutes from './userRoutes.js';
 import patientRoutes from './patientRoutes.js';
@@ -28,8 +29,32 @@ import roleRoutes from './roleRoutes.js';
 
 const router = Router();
 
-router.get('/health', (_req, res) => {
-  res.json({ success: true, message: 'API is healthy', data: { uptime: process.uptime() } });
+// Liveness + readiness in one.
+//
+// Reporting "healthy" purely because the process is running is worse than
+// useless: it stays green while every real request fails on a dead database,
+// so an orchestrator keeps routing traffic to an instance that cannot serve
+// it. This actually pings MongoDB and answers 503 when it can't be reached.
+router.get('/health', async (_req, res) => {
+  const state = mongoose.connection.readyState; // 1 = connected
+  let database = state === 1 ? 'up' : 'down';
+
+  if (database === 'up') {
+    // readyState can lag reality — confirm the server actually answers.
+    try {
+      await mongoose.connection.db.admin().command({ ping: 1 });
+    } catch {
+      database = 'down';
+    }
+  }
+
+  const healthy = database === 'up';
+  res.status(healthy ? 200 : 503).json({
+    success: healthy,
+    message: healthy ? 'API is healthy' : 'Database unreachable',
+    ...(healthy ? {} : { error: 'DATABASE_UNAVAILABLE' }),
+    data: { uptime: process.uptime(), database },
+  });
 });
 
 router.use('/auth', authRoutes);

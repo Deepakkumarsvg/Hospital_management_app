@@ -23,6 +23,17 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
+// A gateway payment id may only ever be banked once. The client's verify call
+// and Razorpay's webhook routinely both arrive for the same payment; without
+// this the invoice would be credited twice.
+//
+// Partial, because transactionId is blank for cash/card payments taken at the
+// desk — those carry no external id to deduplicate on.
+paymentSchema.index(
+  { transactionId: 1 },
+  { unique: true, partialFilterExpression: { transactionId: { $gt: '' } } }
+);
+
 paymentSchema.pre('save', async function (next) {
   if (this.receiptNo) return next();
   try {

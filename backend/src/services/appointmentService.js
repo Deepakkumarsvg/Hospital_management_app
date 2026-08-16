@@ -24,6 +24,21 @@ async function assertSlotFree({ doctor, patient, date, time, excludeId }) {
   if (patientClash) throw ApiError.conflict('This patient already has another appointment at this time', 'PATIENT_SLOT_TAKEN');
 }
 
+// The check above can't close the gap between its read and the write — two
+// simultaneous bookings both pass it. The unique slot indexes on the model do
+// close it; this turns the resulting duplicate-key error back into the same
+// conflict the caller would have got from assertSlotFree.
+function rethrowSlotClash(err) {
+  if (err?.code !== 11000) throw err;
+  if (err.keyPattern?.doctor) {
+    throw ApiError.conflict('Doctor already has an appointment at this time', 'SLOT_TAKEN');
+  }
+  if (err.keyPattern?.patient) {
+    throw ApiError.conflict('This patient already has another appointment at this time', 'PATIENT_SLOT_TAKEN');
+  }
+  throw err;
+}
+
 const POPULATE = [
   { path: 'patient', select: 'uhid firstName lastName phone' },
   { path: 'doctor', select: 'firstName lastName specialization user' },
@@ -73,7 +88,7 @@ export async function createAppointment(data, userId) {
   await assertSlotFree({ doctor: data.doctor, patient: data.patient, date: data.date, time: data.time });
 
   const appt = new Appointment({ ...data, createdBy: userId });
-  await appt.save();
+  await appt.save().catch(rethrowSlotClash);
   return appt.populate(POPULATE);
 }
 
@@ -97,7 +112,7 @@ export async function updateAppointment(id, data) {
   }
 
   Object.assign(appt, data);
-  await appt.save();
+  await appt.save().catch(rethrowSlotClash);
   return appt.populate(POPULATE);
 }
 

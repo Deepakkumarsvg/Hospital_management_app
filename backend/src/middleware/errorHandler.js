@@ -42,6 +42,25 @@ export function errorHandler(err, req, res, _next) {
     errorCode = 'VALIDATION_ERROR';
   }
 
+  // The database is unreachable — the server is fine, its dependency is not.
+  // That's a 503, not a 500: it tells the caller (and any load balancer) that
+  // this is temporary and worth retrying, and it gives the operator something
+  // actionable instead of "Internal server error" on every single request.
+  //
+  // Mongoose surfaces this three ways: server selection failing outright, the
+  // socket dying mid-request, or a query sitting in the buffer until it times
+  // out because there is no connection to send it on.
+  if (
+    err.name === 'MongooseServerSelectionError' ||
+    err.name === 'MongoNetworkError' ||
+    err.name === 'MongoNotConnectedError' ||
+    (err.name === 'MongooseError' && /buffering timed out/i.test(err.message))
+  ) {
+    statusCode = 503;
+    errorCode = 'DATABASE_UNAVAILABLE';
+    message = 'Cannot reach the database right now. Please try again in a moment.';
+  }
+
   if (statusCode >= 500) {
     console.error('✗ Unhandled error:', err);
   }

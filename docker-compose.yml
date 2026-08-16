@@ -9,16 +9,28 @@ services:
   mongo:
     image: mongo:7
     restart: unless-stopped
+    # A single-node replica set, not a standalone server. Transactions (used
+    # for multi-collection writes such as goods receipt) are only available on
+    # a replica set; a one-node set gives that with no extra infrastructure.
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     volumes:
       - mongo-data:/data/db
     # Not published to the host by default — only the backend needs it.
     expose:
       - "27017"
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      # Initiates the replica set on first boot, then reports healthy once the
+      # node is primary. Re-running rs.initiate() on an initiated set is a
+      # harmless no-op, so this is safe on every restart.
+      test: >-
+        mongosh --quiet --eval "
+          try { rs.status() } catch (e) { rs.initiate({_id:'rs0',members:[{_id:0,host:'mongo:27017'}]}) };
+          rs.status().members[0].stateStr === 'PRIMARY' ? 0 : quit(1)
+        "
       interval: 10s
-      timeout: 5s
-      retries: 5
+      timeout: 10s
+      retries: 12
+      start_period: 20s
 
   backend:
     build: ./backend
@@ -29,10 +41,13 @@ services:
     environment:
       NODE_ENV: production
       PORT: "5000"
-      MONGODB_URI: mongodb://mongo:27017/hospital_management
+      MONGODB_URI: mongodb://mongo:27017/hospital_management?replicaSet=rs0
       JWT_SECRET: ${JWT_SECRET:?set a strong JWT_SECRET in .env}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
       CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
+      # Exactly one proxy (the frontend's nginx) sits in front of the API, so
+      # the client's real address is the last entry of X-Forwarded-For.
+      TRUST_PROXY: "1"
       STORAGE_DRIVER: local
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@hms.local}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-Admin@123}

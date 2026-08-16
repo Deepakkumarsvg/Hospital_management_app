@@ -3,7 +3,8 @@ import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import { ApiError } from '../utils/ApiError.js';
 import { PatientDocument, DOCUMENT_CATEGORIES } from '../models/PatientDocument.js';
 import { Patient } from '../models/Patient.js';
-import { resolvePath, removeFile } from '../config/storage.js';
+import { removeFile } from '../config/storage.js';
+import { serveStoredFile } from '../utils/serveFile.js';
 
 // GET /api/patients/:id/documents
 export const listDocuments = asyncHandler(async (req, res) => {
@@ -43,13 +44,7 @@ export const downloadDocument = asyncHandler(async (req, res) => {
 
   // inline=true lets the frontend open PDFs/images in a new tab instead of
   // forcing a save-to-disk prompt.
-  if (req.query.inline === 'true') {
-    res.setHeader('Content-Type', doc.mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.originalName)}"`);
-    return res.sendFile(resolvePath(doc.storageKey));
-  }
-
-  res.download(resolvePath(doc.storageKey), doc.originalName);
+  serveStoredFile(res, doc, { inline: req.query.inline === 'true' });
 });
 
 // DELETE /api/patients/:id/documents/:docId
