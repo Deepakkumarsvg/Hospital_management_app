@@ -7,7 +7,7 @@ import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
@@ -95,7 +95,7 @@ function Medicines({ canManage, onDispense }) {
         {canManage && <Button onClick={() => { setEditing(null); setFormOpen(true); }}><Plus className="h-4 w-4" /> New Medicine</Button>}
       </div>
 
-      {loading ? <Spinner full /> : items.length === 0 ? (
+      {loading ? <ListSkeleton /> : items.length === 0 ? (
         <div className="card overflow-hidden"><EmptyState icon={Pill} title={search ? 'No medicines match your search' : 'No medicines'} description={canManage ? 'Add a medicine to the catalogue.' : 'Nothing here yet.'} /></div>
       ) : (
         <>
@@ -205,7 +205,7 @@ function Dispenses({ canManage }) {
         </div>
       </div>
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? (
+        {loading ? <ListSkeleton /> : items.length === 0 ? (
           <EmptyState icon={ShoppingCart} title={search || doctor ? 'No dispenses match your filters' : 'No dispenses yet'} />
         ) : (
           <>
@@ -272,7 +272,7 @@ function Expiring() {
   return (
     <div className="space-y-4">
       <div className="w-full sm:w-48"><Select value={days} onChange={(e) => setDays(e.target.value)} options={EXPIRY_WINDOWS} /></div>
-      {loading ? <Spinner full /> : items.length === 0 ? (
+      {loading ? <ListSkeleton /> : items.length === 0 ? (
         <EmptyState icon={CalendarX} title="Nothing expiring" description={`No batches expiring in the next ${days} days.`} />
       ) : (
       <div className="card overflow-hidden">

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../components/ui/Modal.jsx';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getEmployee } from '../../services/hrService.js';
 import { LEAVE_STATUS_META, PAYSLIP_STATUS_META, MONTH_OPTIONS, formatDate, money } from '../../utils/constants.js';
@@ -36,7 +36,7 @@ export default function EmployeeDetailModal({ employeeId, onClose }) {
 
   return (
     <Modal open={!!employeeId} onClose={onClose} size="xl" title={e ? `${e.name} · ${e.employeeCode}` : 'Employee'}>
-      {loading ? <Spinner full /> : !data ? null : (
+      {loading ? <ListSkeleton rows={4} /> : !data ? null : (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <div><p className="text-xs text-muted">Designation</p><p className="mt-0.5">{e.designation || '—'}</p></div>

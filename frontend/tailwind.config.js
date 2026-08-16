@@ -24,9 +24,28 @@ export default {
           '0%': { opacity: '0', transform: 'translateY(6px)' },
           '100%': { opacity: '1', transform: 'translateY(0)' },
         },
+        // Slow drift for the decorative background shapes on auth screens.
+        float: {
+          '0%, 100%': { transform: 'translate3d(0, 0, 0)' },
+          '50%': { transform: 'translate3d(0, -22px, 0)' },
+        },
+        // Light sweeping across a skeleton placeholder.
+        shimmer: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(100%)' },
+        },
+        // Indeterminate progress bar for the full-page loader.
+        progress: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(320%)' },
+        },
       },
       animation: {
         fadeIn: 'fadeIn 0.4s ease-out',
+        float: 'float 14s ease-in-out infinite',
+        'float-slow': 'float 22s ease-in-out infinite',
+        shimmer: 'shimmer 1.8s ease-in-out infinite',
+        progress: 'progress 1.3s ease-in-out infinite',
       },
     },
   },

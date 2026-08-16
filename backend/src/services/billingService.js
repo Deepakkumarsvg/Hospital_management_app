@@ -85,18 +85,38 @@ export async function updateInvoice(id, data) {
 // exists, it must be refunded first — cancelling is not a way to erase a
 // paid bill.
 export async function cancelInvoice(id, reason) {
-  const invoice = await Invoice.findById(id);
-  if (!invoice) throw ApiError.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
-  if (['CANCELLED', 'REFUNDED'].includes(invoice.status)) {
-    throw ApiError.badRequest(`Invoice is already ${invoice.status.toLowerCase()}`, 'ALREADY_CLOSED');
-  }
-  if (invoice.paidAmount > 0) {
+  // Both preconditions live in the query: a payment landing at the same moment
+  // as a cancellation must lose, not silently void a bill that has been paid.
+  const invoice = await Invoice.findOneAndUpdate(
+    { _id: id, status: { $nin: ['CANCELLED', 'REFUNDED'] }, paidAmount: { $lte: 0 } },
+    [
+      {
+        $set: {
+          status: 'CANCELLED',
+          notes: reason
+            ? {
+                $cond: [
+                  { $gt: [{ $strLenCP: { $ifNull: ['$notes', ''] } }, 0] },
+                  { $concat: ['$notes', ' | Cancelled: ', reason] },
+                  `Cancelled: ${reason}`,
+                ],
+              }
+            : '$notes',
+        },
+      },
+    ],
+    { new: true }
+  );
+
+  if (!invoice) {
+    const existing = await Invoice.findById(id).select('status paidAmount');
+    if (!existing) throw ApiError.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
+    if (['CANCELLED', 'REFUNDED'].includes(existing.status)) {
+      throw ApiError.badRequest(`Invoice is already ${existing.status.toLowerCase()}`, 'ALREADY_CLOSED');
+    }
     throw ApiError.badRequest('Refund the payment before cancelling this invoice', 'INVOICE_HAS_PAYMENTS');
   }
-  invoice.status = 'CANCELLED';
-  if (reason) invoice.notes = invoice.notes ? `${invoice.notes} | Cancelled: ${reason}` : `Cancelled: ${reason}`;
-  invoice.recompute();
-  await invoice.save();
+
   return invoice.populate(POPULATE);
 }
 
@@ -106,52 +126,130 @@ export async function cancelInvoice(id, reason) {
 // REFUNDED; a partial refund just lowers paidAmount and lets recompute()
 // re-derive PARTIAL/PENDING normally.
 export async function refundInvoice(id, { amount, method, reason }, userId) {
-  const invoice = await Invoice.findById(id);
-  if (!invoice) throw ApiError.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
-  if (invoice.status === 'CANCELLED') throw ApiError.badRequest('Cannot refund a cancelled invoice', 'INVOICE_CANCELLED');
-  if (invoice.paidAmount <= 0) throw ApiError.badRequest('Nothing has been paid on this invoice', 'NOTHING_PAID');
-  if (amount > invoice.paidAmount + 0.001) {
-    throw ApiError.badRequest(`Refund cannot exceed the amount paid (₹${invoice.paidAmount})`, 'REFUND_EXCEEDS_PAID');
+  // Same shape as recordPayment: the "can't refund more than was paid" rule
+  // lives in the query, so two concurrent refunds can't both draw on the same
+  // paid balance.
+  const invoice = await Invoice.findOneAndUpdate(
+    {
+      _id: id,
+      status: { $ne: 'CANCELLED' },
+      $expr: { $lte: [amount, { $add: ['$paidAmount', EPSILON] }] },
+      paidAmount: { $gt: 0 },
+    },
+    [
+      { $set: { paidAmount: { $max: [0, { $round: [{ $subtract: ['$paidAmount', amount] }, 2] }] } } },
+      DERIVE_TOTALS_STAGE,
+      // A refund that empties the invoice closes it as REFUNDED rather than
+      // dropping back to PENDING — the money went out, it isn't owed again.
+      { $set: { status: { $cond: [{ $lte: ['$paidAmount', EPSILON] }, 'REFUNDED', '$status'] } } },
+    ],
+    { new: true }
+  );
+
+  if (!invoice) {
+    const existing = await Invoice.findById(id).select('status paidAmount');
+    if (!existing) throw ApiError.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
+    if (existing.status === 'CANCELLED') throw ApiError.badRequest('Cannot refund a cancelled invoice', 'INVOICE_CANCELLED');
+    if (existing.paidAmount <= 0) throw ApiError.badRequest('Nothing has been paid on this invoice', 'NOTHING_PAID');
+    throw ApiError.badRequest(`Refund cannot exceed the amount paid (₹${existing.paidAmount})`, 'REFUND_EXCEEDS_PAID');
   }
 
-  const payment = new Payment({
-    invoice: invoice._id, patient: invoice.patient,
-    amount, type: 'REFUND', method: method || 'CASH', note: reason || '', receivedBy: userId,
-  });
-  await payment.save();
-
-  invoice.paidAmount = Math.max(0, Math.round((invoice.paidAmount - amount) * 100) / 100);
-  if (invoice.paidAmount <= 0.001) {
-    invoice.paidAmount = 0;
-    invoice.status = 'REFUNDED';
+  try {
+    // Recorded as its own Payment (type: REFUND) for a full, symmetric audit
+    // trail — never a silent subtraction.
+    const payment = await Payment.create({
+      invoice: invoice._id, patient: invoice.patient,
+      amount, type: 'REFUND', method: method || 'CASH', note: reason || '', receivedBy: userId,
+    });
+    return { invoice: await invoice.populate(POPULATE), payment };
+  } catch (err) {
+    await Invoice.findByIdAndUpdate(id, [
+      { $set: { paidAmount: { $round: [{ $add: ['$paidAmount', amount] }, 2] } } },
+      DERIVE_TOTALS_STAGE,
+    ]).catch(() => {});
+    throw err;
   }
-  invoice.recompute();
-  await invoice.save();
-  return { invoice: await invoice.populate(POPULATE), payment };
 }
 
+// Money comparisons carry float noise, so "equal" means "within half a paisa".
+const EPSILON = 0.005;
+
+// Re-derive dueAmount and status from whatever paidAmount ends up being. Runs
+// as a stage of the same update pipeline as the paidAmount change, so the
+// invoice is never observable in a state where the three disagree.
+const DERIVE_TOTALS_STAGE = {
+  $set: {
+    dueAmount: { $round: [{ $subtract: ['$grandTotal', '$paidAmount'] }, 2] },
+    status: {
+      $switch: {
+        branches: [
+          { case: { $lte: ['$paidAmount', EPSILON] }, then: 'PENDING' },
+          { case: { $lt: ['$paidAmount', { $subtract: ['$grandTotal', EPSILON] }] }, then: 'PARTIAL' },
+        ],
+        default: 'PAID',
+      },
+    },
+  },
+};
+
 // Record a payment and roll it up into the invoice.
+//
+// The invoice is updated FIRST, with the overpayment rule expressed as part of
+// the query. Reading the invoice, checking the due amount and then writing
+// would let two concurrent payments each see the full amount outstanding and
+// both go through.
 export async function recordPayment(invoiceId, data, userId) {
-  const invoice = await Invoice.findById(invoiceId);
-  if (!invoice) throw ApiError.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
-  if (['REFUNDED', 'CANCELLED'].includes(invoice.status)) {
-    throw ApiError.badRequest(`Cannot pay a ${invoice.status.toLowerCase()} invoice`, 'INVOICE_LOCKED');
-  }
-  if (data.amount > invoice.dueAmount + 0.001) {
-    throw ApiError.badRequest(`Amount exceeds due (₹${invoice.dueAmount})`, 'OVERPAYMENT');
+  const invoice = await Invoice.findOneAndUpdate(
+    {
+      _id: invoiceId,
+      status: { $nin: ['REFUNDED', 'CANCELLED'] },
+      // paidAmount + amount must not exceed the grand total.
+      $expr: { $lte: [{ $add: ['$paidAmount', data.amount] }, { $add: ['$grandTotal', EPSILON] }] },
+    },
+    [
+      { $set: { paidAmount: { $round: [{ $add: ['$paidAmount', data.amount] }, 2] } } },
+      DERIVE_TOTALS_STAGE,
+    ],
+    { new: true }
+  );
+
+  if (!invoice) {
+    // Nothing matched — work out which rule turned it down.
+    const existing = await Invoice.findById(invoiceId).select('status dueAmount');
+    if (!existing) throw ApiError.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
+    if (['REFUNDED', 'CANCELLED'].includes(existing.status)) {
+      throw ApiError.badRequest(`Cannot pay a ${existing.status.toLowerCase()} invoice`, 'INVOICE_LOCKED');
+    }
+    throw ApiError.badRequest(`Amount exceeds due (₹${existing.dueAmount})`, 'OVERPAYMENT');
   }
 
-  const payment = new Payment({
-    invoice: invoice._id, patient: invoice.patient,
-    amount: data.amount, method: data.method || 'CASH',
-    transactionId: data.transactionId || '', note: data.note || '', receivedBy: userId,
-  });
-  await payment.save();
+  try {
+    const payment = await Payment.create({
+      invoice: invoice._id, patient: invoice.patient,
+      amount: data.amount, method: data.method || 'CASH',
+      transactionId: data.transactionId || '', note: data.note || '', receivedBy: userId,
+    });
+    return { invoice: await invoice.populate(POPULATE), payment };
+  } catch (err) {
+    // The receipt is what makes the payment auditable. If it can't be written,
+    // the invoice must not claim the money was received.
+    await Invoice.findByIdAndUpdate(invoiceId, [
+      { $set: { paidAmount: { $round: [{ $subtract: ['$paidAmount', data.amount] }, 2] } } },
+      DERIVE_TOTALS_STAGE,
+    ]).catch(() => {});
 
-  invoice.paidAmount = Math.round((invoice.paidAmount + data.amount) * 100) / 100;
-  invoice.recompute();
-  await invoice.save();
-  return { invoice: await invoice.populate(POPULATE), payment };
+    // A duplicate transactionId means this exact gateway payment has already
+    // been banked — the client's verify call and the webhook both arrived.
+    // That's an expected race, not a failure, so it gets its own code.
+    if (err?.code === 11000 && err.keyPattern?.transactionId) {
+      throw ApiError.conflict(
+        'This payment has already been recorded',
+        'PAYMENT_ALREADY_RECORDED',
+        { transactionId: data.transactionId }
+      );
+    }
+    throw err;
+  }
 }
 
 // Suggested billable lines drawn from the patient's diagnostics & pharmacy —

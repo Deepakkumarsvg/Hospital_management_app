@@ -3,7 +3,7 @@ import { Upload, FileText, Download, Trash2, File, Eye } from 'lucide-react';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -118,7 +118,7 @@ export default function PatientDocuments({ patientId }) {
       )}
 
       {loading ? (
-        <Spinner full />
+        <ListSkeleton card />
       ) : docs.length === 0 ? (
         <EmptyState icon={FileText} title="No documents" description={canEdit ? 'Upload the first document above.' : 'No documents on file.'} />
       ) : (

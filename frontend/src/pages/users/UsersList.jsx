@@ -9,6 +9,7 @@ import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
@@ -286,7 +287,7 @@ export default function UsersList() {
 
       <div className="card overflow-hidden">
         {loading ? (
-          <Spinner full />
+          <ListSkeleton />
         ) : items.length === 0 ? (
           <EmptyState icon={UserCog} title="No users found" description="Adjust your search or create a user." />
         ) : (

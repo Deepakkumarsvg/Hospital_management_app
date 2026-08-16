@@ -1,7 +1,8 @@
 import path from 'path';
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import * as service from '../services/insuranceService.js';
-import { resolvePath, removeFile } from '../config/storage.js';
+import { removeFile } from '../config/storage.js';
+import { serveStoredFile } from '../utils/serveFile.js';
 
 export const list = asyncHandler(async (req, res) => {
   const { items, pagination } = await service.listClaims(req.query);
@@ -34,12 +35,7 @@ export const uploadClaimDocument = asyncHandler(async (req, res) => {
 
 export const downloadClaimDocument = asyncHandler(async (req, res) => {
   const doc = await service.getClaimDocument(req.params.id, req.params.docId);
-  if (req.query.inline === 'true') {
-    res.setHeader('Content-Type', doc.mimeType);
-    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.originalName)}"`);
-    return res.sendFile(resolvePath(doc.storageKey));
-  }
-  res.download(resolvePath(doc.storageKey), doc.originalName);
+  serveStoredFile(res, doc, { inline: req.query.inline === 'true' });
 });
 
 export const deleteClaimDocument = asyncHandler(async (req, res) => {

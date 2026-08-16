@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { History } from 'lucide-react';
 import Modal from '../../components/ui/Modal.jsx';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { itemTransactions } from '../../services/inventoryService.js';
@@ -26,7 +26,7 @@ export default function ItemTransactionsModal({ item, onClose, onViewPO }) {
 
   return (
     <Modal open={!!item} onClose={onClose} size="lg" title={item ? `Stock Movements · ${item.name}` : ''}>
-      {loading ? <Spinner full /> : !txns || txns.length === 0 ? (
+      {loading ? <ListSkeleton rows={4} /> : !txns || txns.length === 0 ? (
         <EmptyState icon={History} title="No movements yet" description="Receipts, dispatches and adjustments will show up here." />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border">

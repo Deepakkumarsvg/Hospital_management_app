@@ -4,7 +4,7 @@ import { ArrowLeft, Pencil, Stethoscope, Phone, Mail, IndianRupee, Award, Calend
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import DoctorForm from './DoctorForm.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -58,7 +58,7 @@ export default function DoctorDetail() {
       .catch(() => setApptLoad({ total: null, today: null }));
   }, [id]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton stats={0} />;
   if (!doctor) return null;
 
   const availDays = (doctor.availability || []).map((a) => a.day);

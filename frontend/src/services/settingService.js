@@ -4,18 +4,20 @@ export const getSettings = () => api.get('/settings').then((r) => r.data.data);
 export const updateSettings = (payload) => api.put('/settings', payload).then((r) => r.data.data);
 
 // Unauthenticated-safe subset ({ hospitalName, tagline, hasLogo }) — for the
-// login screen, before a token exists.
-export const getPublicSettings = () => api.get('/settings/public').then((r) => r.data.data);
+// login screen, before a token exists. An explicit `tenant` reads another
+// hospital's branding without changing the stored selection.
+export const getPublicSettings = (tenant) =>
+  api.get('/settings/public', tenant ? { tenant } : undefined).then((r) => r.data.data);
 
 // Public asset URL — no auth needed, safe to drop straight into an <img src>.
 // A plain <img> can't carry the X-Tenant header the axios instance normally
 // attaches, so the tenant is passed as a query param instead (the backend's
 // tenant resolver accepts either). Cache-busted with updatedAt (when known)
 // so a re-upload shows immediately instead of a stale cached image.
-export function logoUrl(settings) {
+export function logoUrl(settings, tenant) {
   const hasLogo = settings?.hasLogo ?? !!settings?.logo?.storageKey;
   if (!hasLogo) return null;
-  const params = new URLSearchParams({ tenant: getTenant(), v: settings.updatedAt || '' });
+  const params = new URLSearchParams({ tenant: tenant || getTenant(), v: settings.updatedAt || '' });
   return `/api/settings/logo?${params.toString()}`;
 }
 

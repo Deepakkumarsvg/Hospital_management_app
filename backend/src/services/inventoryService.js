@@ -3,6 +3,7 @@ import { InventoryItemBatch } from '../models/InventoryItemBatch.js';
 import { Vendor } from '../models/Vendor.js';
 import { PurchaseOrder } from '../models/PurchaseOrder.js';
 import { StockTransaction } from '../models/StockTransaction.js';
+import { withTransaction } from '../db/withTransaction.js';
 import { ApiError } from '../utils/ApiError.js';
 import { notify } from './notificationService.js';
 
@@ -60,14 +61,21 @@ export async function deleteItem(id) {
 // "adjustment" batch on the way in) so the batch view never drifts from
 // what's recorded here.
 export async function adjustStock(id, { type, quantity, reference, note }, userId) {
-  const item = await InventoryItem.findById(id);
-  if (!item) throw ApiError.notFound('Item not found', 'ITEM_NOT_FOUND');
-
   let delta;
   if (type === 'IN') delta = Math.abs(quantity);
   else if (type === 'OUT') delta = -Math.abs(quantity);
   else delta = quantity; // ADJUST: signed
-  if (item.currentStock + delta < 0) throw ApiError.badRequest('Resulting stock cannot be negative', 'NEGATIVE_STOCK');
+
+  // Apply the movement in one conditional update, so concurrent adjustments
+  // can't lose each other's write or take the stock below zero between the
+  // check and the save.
+  const filter = delta < 0 ? { _id: id, currentStock: { $gte: -delta } } : { _id: id };
+  const item = await InventoryItem.findOneAndUpdate(filter, { $inc: { currentStock: delta } }, { new: true });
+  if (!item) {
+    const existing = await InventoryItem.findById(id).select('currentStock');
+    if (!existing) throw ApiError.notFound('Item not found', 'ITEM_NOT_FOUND');
+    throw ApiError.badRequest('Resulting stock cannot be negative', 'NEGATIVE_STOCK');
+  }
 
   if (delta < 0) {
     let need = -delta;
@@ -75,9 +83,8 @@ export async function adjustStock(id, { type, quantity, reference, note }, userI
     for (const b of batches) {
       if (need <= 0) break;
       const take = Math.min(b.quantity, need);
-      b.quantity -= take;
-      await b.save();
-      need -= take;
+      const res = await InventoryItemBatch.updateOne({ _id: b._id, quantity: { $gte: take } }, { $inc: { quantity: -take } });
+      if (res.modifiedCount) need -= take;
     }
   } else if (delta > 0) {
     await InventoryItemBatch.create({
@@ -86,11 +93,11 @@ export async function adjustStock(id, { type, quantity, reference, note }, userI
     });
   }
 
-  const wasLow = item.currentStock <= item.minStock;
-  item.currentStock += delta;
-  await item.save();
   await StockTransaction.create({ item: item._id, type, quantity: delta, balanceAfter: item.currentStock, reference, note, by: userId });
 
+  // currentStock is already post-movement, so the "before" value is whatever
+  // we just applied taken back off it.
+  const wasLow = item.currentStock - delta <= item.minStock;
   if (!wasLow && item.currentStock <= item.minStock) {
     notify({
       role: 'STORE_MANAGER', type: 'INVENTORY', title: 'Low stock alert',
@@ -326,57 +333,78 @@ export async function placeOrder(id) {
 // record a partial/short shipment (only those lines, up to what's still
 // outstanding); omit it to receive everything still outstanding in full.
 export async function receivePurchaseOrder(id, { items: receivedLines } = {}, userId) {
-  const po = await PurchaseOrder.findById(id);
-  if (!po) throw ApiError.notFound('Purchase order not found', 'PO_NOT_FOUND');
-  if (po.status === 'RECEIVED') throw ApiError.badRequest('Purchase order already received', 'PO_ALREADY_RECEIVED');
-  if (po.status === 'CANCELLED') throw ApiError.badRequest('Cannot receive a cancelled order', 'PO_CANCELLED');
-  if (po.status === 'DRAFT') throw ApiError.badRequest('Place the order before receiving stock', 'PO_NOT_ORDERED');
+  // One goods receipt writes to four collections — the order's received
+  // quantities, each item's stock, its batch, and the stock ledger. A partial
+  // application would leave stock on the shelf that no ledger entry explains,
+  // or an order marked received against stock that was never added. All of it
+  // lands together or none of it does.
+  const poId = await withTransaction(async (session) => {
+    // Reading the PO inside the transaction (rather than before it) is what
+    // makes two simultaneous receipts safe: the second one is serialised
+    // against the first and sees its updated receivedQuantity, instead of both
+    // reading zero and both stocking in the full shipment.
+    const po = await PurchaseOrder.findById(id).session(session);
+    if (!po) throw ApiError.notFound('Purchase order not found', 'PO_NOT_FOUND');
+    if (po.status === 'RECEIVED') throw ApiError.badRequest('Purchase order already received', 'PO_ALREADY_RECEIVED');
+    if (po.status === 'CANCELLED') throw ApiError.badRequest('Cannot receive a cancelled order', 'PO_CANCELLED');
+    if (po.status === 'DRAFT') throw ApiError.badRequest('Place the order before receiving stock', 'PO_NOT_ORDERED');
 
-  const requestedByItem = receivedLines
-    ? new Map(receivedLines.map((l) => [String(l.item), { quantity: l.quantity, expiryDate: l.expiryDate }]))
-    : null;
+    const requestedByItem = receivedLines
+      ? new Map(receivedLines.map((l) => [String(l.item), { quantity: l.quantity, expiryDate: l.expiryDate }]))
+      : null;
 
-  for (const line of po.items) {
-    const outstanding = line.quantity - line.receivedQuantity;
-    if (outstanding <= 0) continue;
-    const requestedLine = requestedByItem?.get(String(line.item));
-    const requested = requestedByItem ? (requestedLine?.quantity ?? 0) : outstanding;
-    const take = Math.min(outstanding, requested);
-    if (take <= 0) continue;
+    for (const line of po.items) {
+      const outstanding = line.quantity - line.receivedQuantity;
+      if (outstanding <= 0) continue;
+      const requestedLine = requestedByItem?.get(String(line.item));
+      const requested = requestedByItem ? (requestedLine?.quantity ?? 0) : outstanding;
+      const take = Math.min(outstanding, requested);
+      if (take <= 0) continue;
 
-    const item = await InventoryItem.findById(line.item);
-    if (!item) continue;
-    item.currentStock += take;
-    item.lastPurchasePrice = line.unitPrice;
-    await item.save();
-    await StockTransaction.create({ item: item._id, type: 'IN', quantity: take, balanceAfter: item.currentStock, reference: po.poNo, note: 'Goods receipt', by: userId });
+      const item = await InventoryItem.findByIdAndUpdate(
+        line.item,
+        { $inc: { currentStock: take }, $set: { lastPurchasePrice: line.unitPrice } },
+        { new: true, session }
+      );
+      if (!item) continue;
 
-    // Multiple (partial) receipts against the same PO/item are the same
-    // physical shipment — fold into one batch rather than creating a new
-    // record (and re-check for a matching batchNo, since the unique index
-    // would otherwise reject a second insert).
-    const existingBatch = await InventoryItemBatch.findOne({ item: line.item, batchNo: po.poNo });
-    if (existingBatch) {
-      existingBatch.quantity += take;
-      existingBatch.receivedQuantity += take;
-      await existingBatch.save();
-    } else {
-      await InventoryItemBatch.create({
-        item: line.item, vendor: po.vendor, batchNo: po.poNo,
-        expiryDate: requestedLine?.expiryDate || null,
-        quantity: take, receivedQuantity: take, unitPrice: line.unitPrice, receivedBy: userId,
-      });
+      await StockTransaction.create([{
+        item: item._id, type: 'IN', quantity: take, balanceAfter: item.currentStock,
+        reference: po.poNo, note: 'Goods receipt', by: userId,
+      }], { session });
+
+      // Multiple (partial) receipts against the same PO/item are the same
+      // physical shipment — fold into one batch rather than creating a new
+      // record (the unique {item, batchNo} index would reject a second insert
+      // anyway).
+      await InventoryItemBatch.updateOne(
+        { item: line.item, batchNo: po.poNo },
+        {
+          $inc: { quantity: take, receivedQuantity: take },
+          $setOnInsert: {
+            vendor: po.vendor,
+            expiryDate: requestedLine?.expiryDate || null,
+            unitPrice: line.unitPrice,
+            receivedBy: userId,
+          },
+        },
+        { upsert: true, session }
+      );
+
+      line.receivedQuantity += take;
     }
 
-    line.receivedQuantity += take;
-  }
+    const fullyReceived = po.items.every((l) => l.receivedQuantity >= l.quantity);
+    const anyReceived = po.items.some((l) => l.receivedQuantity > 0);
+    po.status = fullyReceived ? 'RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : po.status;
+    if (fullyReceived) po.receivedAt = new Date();
+    await po.save({ session });
+    return po._id;
+  });
 
-  const fullyReceived = po.items.every((l) => l.receivedQuantity >= l.quantity);
-  const anyReceived = po.items.some((l) => l.receivedQuantity > 0);
-  po.status = fullyReceived ? 'RECEIVED' : anyReceived ? 'PARTIALLY_RECEIVED' : po.status;
-  if (fullyReceived) po.receivedAt = new Date();
-  await po.save();
-  return po.populate(PO_POPULATE);
+  // Re-read outside the transaction: populate() can't run on a committed
+  // session's document without re-issuing its queries there.
+  return PurchaseOrder.findById(poId).populate(PO_POPULATE);
 }
 
 export async function cancelPurchaseOrder(id) {

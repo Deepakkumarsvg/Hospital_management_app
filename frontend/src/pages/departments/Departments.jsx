@@ -6,7 +6,7 @@ import Badge from '../../components/ui/Badge.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
@@ -170,7 +170,7 @@ export default function Departments() {
 
       <div className="card overflow-hidden">
         {loading ? (
-          <Spinner full />
+          <ListSkeleton />
         ) : items.length === 0 ? (
           <EmptyState icon={Building2} title={search ? 'No departments match your search' : 'No departments'}
             description={search ? 'Try a different name or code.' : 'Create a department to get started.'} />

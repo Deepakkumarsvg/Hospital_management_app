@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../components/ui/Modal.jsx';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { PackageOpen } from 'lucide-react';
 import { useToast } from '../../context/ToastContext.jsx';
@@ -24,7 +24,7 @@ export default function MedicineBatchesModal({ medicine, onClose }) {
 
   return (
     <Modal open={!!medicine} onClose={onClose} size="lg" title={medicine ? `Batches · ${medicine.name}` : ''}>
-      {loading ? <Spinner full /> : !batches || batches.length === 0 ? (
+      {loading ? <ListSkeleton rows={4} /> : !batches || batches.length === 0 ? (
         <EmptyState icon={PackageOpen} title="No stock batches" description="Receive stock to see lot-wise batches here." />
       ) : (
         <div className="overflow-hidden rounded-lg border border-border">

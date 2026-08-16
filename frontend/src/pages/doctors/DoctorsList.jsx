@@ -4,7 +4,7 @@ import { Search, Plus, Stethoscope, Pencil, Trash2, Eye, Download } from 'lucide
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
@@ -123,7 +123,7 @@ export default function DoctorsList() {
 
       <div className="card overflow-hidden">
         {loading ? (
-          <Spinner full />
+          <ListSkeleton />
         ) : items.length === 0 ? (
           <EmptyState icon={Stethoscope} title={search ? 'No doctors match' : 'No doctors yet'}
             description={search ? 'Try a different search.' : 'Add your first doctor.'}

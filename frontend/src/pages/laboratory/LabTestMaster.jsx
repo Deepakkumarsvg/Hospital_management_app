@@ -6,7 +6,7 @@ import Badge from '../../components/ui/Badge.jsx';
 import Input from '../../components/ui/Input.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
@@ -87,7 +87,7 @@ export default function LabTestMaster() {
     catch (err) { toast.error(err.message || 'Failed'); } finally { setDelLoading(false); }
   };
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
 
   return (
     <div className="space-y-4">

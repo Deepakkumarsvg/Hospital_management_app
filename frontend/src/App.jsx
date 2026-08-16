@@ -3,7 +3,7 @@ import ProtectedRoute from './routes/ProtectedRoute.jsx';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
 import PortalLayout from './layouts/PortalLayout.jsx';
 import { useAuth } from './context/AuthContext.jsx';
-import Spinner from './components/ui/Spinner.jsx';
+import PageLoader from './components/PageLoader.jsx';
 import Login from './pages/Login.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
@@ -75,7 +75,7 @@ function Guard({ roles, children }) {
 // Staff area: authenticated + NOT a patient (patients belong in /portal).
 function RequireStaff({ children }) {
   const { isAuthenticated, loading, role } = useAuth();
-  if (loading) return <Spinner full />;
+  if (loading) return <PageLoader label="Restoring your session…" />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (role === 'PATIENT') return <Navigate to="/portal" replace />;
   return children;
@@ -84,7 +84,7 @@ function RequireStaff({ children }) {
 // Portal area: authenticated + a patient (staff belong in the dashboard).
 function RequirePatient({ children }) {
   const { isAuthenticated, loading, role } = useAuth();
-  if (loading) return <Spinner full />;
+  if (loading) return <PageLoader label="Restoring your session…" />;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (role !== 'PATIENT') return <Navigate to="/" replace />;
   return children;

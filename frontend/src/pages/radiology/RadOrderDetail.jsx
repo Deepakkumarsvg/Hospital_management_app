@@ -5,7 +5,7 @@ import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Modal from '../../components/ui/Modal.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { getRadOrder, changeRadStatus, submitRadReport, downloadRadReportPdf } from '../../services/radiologyService.js';
@@ -52,7 +52,7 @@ export default function RadOrderDetail() {
   };
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [id]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton stats={0} />;
   if (!order) return null;
 
   const meta = RAD_STATUS_META[order.status] || { label: order.status, tone: 'neutral' };

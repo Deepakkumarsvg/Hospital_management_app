@@ -8,7 +8,7 @@ import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
@@ -110,7 +110,7 @@ function Items({ canManage, onReorder, onViewPO }) {
           </>
         )}
       </div>
-      {loading ? <Spinner full /> : items.length === 0 ? (
+      {loading ? <ListSkeleton /> : items.length === 0 ? (
         <div className="card overflow-hidden"><EmptyState icon={Boxes} title={search ? 'No items match your search' : 'No items'} description={canManage ? 'Add an inventory item.' : 'Nothing here yet.'} /></div>
       ) : (
         <>
@@ -194,7 +194,7 @@ function Vendors({ canManage }) {
     try { await exportVendors(format); }
     catch (err) { toast.error(err.message || 'Export failed'); } finally { setExporting(null); }
   };
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
 
   const q = search.trim().toLowerCase();
   const filtered = q ? vendors.filter((v) => [v.name, v.code, v.contactPerson, v.phone, v.email].some((f) => f?.toLowerCase().includes(q))) : vendors;
@@ -312,7 +312,7 @@ function PurchaseOrders({ canManage, initialSearch, onConsumedInitialSearch, pre
         </div>
       </div>
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? (
+        {loading ? <ListSkeleton /> : items.length === 0 ? (
           <EmptyState icon={ClipboardList} title={search || vendor || status !== 'ALL' ? 'No purchase orders match your filters' : 'No purchase orders'} />
         ) : (
           <>

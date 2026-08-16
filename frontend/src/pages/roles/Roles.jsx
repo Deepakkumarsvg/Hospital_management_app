@@ -4,7 +4,7 @@ import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { listRoles, getUserStats } from '../../services/userService.js';
 import { getRoles, getPermissionCatalog, updateRolePermissions } from '../../services/roleService.js';
@@ -140,7 +140,7 @@ export default function Roles() {
     editorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton />;
 
   return (
     <div className="space-y-5">

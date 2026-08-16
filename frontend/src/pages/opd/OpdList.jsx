@@ -5,7 +5,7 @@ import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
 import Input from '../../components/ui/Input.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import OpdStartForm from './OpdStartForm.jsx';
@@ -116,7 +116,7 @@ export default function OpdList() {
       </div>
 
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? (
+        {loading ? <ListSkeleton /> : items.length === 0 ? (
           <EmptyState icon={ClipboardList} title="No OPD visits"
             description={canEdit ? 'Start a consultation to record vitals, diagnosis and a prescription.' : 'Nothing here yet.'}
             action={canEdit ? <Button onClick={() => setFormOpen(true)}><Plus className="h-4 w-4" /> New Visit</Button> : null} />

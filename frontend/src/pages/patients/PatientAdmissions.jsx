@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BedDouble } from 'lucide-react';
 import Badge from '../../components/ui/Badge.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { listAdmissions } from '../../services/ipdService.js';
@@ -21,7 +21,7 @@ export default function PatientAdmissions({ patientId }) {
       .finally(() => setLoading(false));
   }, [patientId, toast]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <ListSkeleton card />;
   if (items.length === 0) return <EmptyState icon={BedDouble} title="No admissions" description="This patient has no inpatient admissions yet." />;
 
   return (

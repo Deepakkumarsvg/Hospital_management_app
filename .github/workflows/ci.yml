@@ -8,13 +8,9 @@ on:
 jobs:
   backend:
     runs-on: ubuntu-latest
-    services:
-      mongo:
-        image: mongo:7
-        ports: ['27017:27017']
-        options: >-
-          --health-cmd "mongosh --quiet --eval 'db.adminCommand(\"ping\")'"
-          --health-interval 10s --health-timeout 5s --health-retries 5
+    # No mongo service container: the suite boots its own in-memory MongoDB as
+    # a single-node replica set (tests/globalSetup.js). A service container
+    # would be standalone, and the transactional write paths cannot run there.
     defaults:
       run:
         working-directory: backend
@@ -26,10 +22,16 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
+      # The mongod binary is ~80 MB and unchanging — downloading it on every
+      # run is the slowest part of this job.
+      - name: Cache in-memory MongoDB binary
+        uses: actions/cache@v4
+        with:
+          path: backend/node_modules/.cache/mongodb-memory-server
+          key: mongodb-binary-${{ runner.os }}
       - run: npm test
         env:
           JWT_SECRET: ci_secret_key_that_is_long_enough_1234
-          TEST_MONGODB_URI: mongodb://127.0.0.1:27017/hms_test
 
   frontend:
     runs-on: ubuntu-latest

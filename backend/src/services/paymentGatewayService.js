@@ -63,12 +63,24 @@ export async function verifyAndCapture(invoiceId, { orderId, paymentId, signatur
   const amount = invoice.dueAmount;
   if (amount <= 0) return { invoice, payment: null, alreadyPaid: true };
 
-  const result = await recordPayment(
-    invoiceId,
-    { amount, method: 'ONLINE', transactionId: paymentId || orderId, note: 'Online payment' },
-    null
-  );
+  const result = await capturePayment(invoiceId, amount, paymentId || orderId, 'Online payment');
   return { ...result, mode: isLive ? 'razorpay' : 'mock' };
+}
+
+// Bank a gateway payment exactly once.
+//
+// The same payment reaches us twice as a matter of course — the browser
+// returns from checkout at roughly the moment Razorpay posts its webhook.
+// The unique transactionId on Payment settles which one wins; the loser is a
+// no-op, not an error, so a webhook is never left retrying forever.
+async function capturePayment(invoiceId, amount, transactionId, note) {
+  try {
+    return await recordPayment(invoiceId, { amount, method: 'ONLINE', transactionId, note }, null);
+  } catch (err) {
+    if (err?.errorCode !== 'PAYMENT_ALREADY_RECORDED' && err?.errorCode !== 'OVERPAYMENT') throw err;
+    const invoice = await Invoice.findById(invoiceId);
+    return { invoice, payment: null, alreadyPaid: true };
+  }
 }
 
 // Razorpay webhook — captures payments confirmed server-side.
@@ -84,7 +96,7 @@ export async function handleWebhook(rawBody, signature) {
   if (payload?.event === 'payment.captured' && invoiceId) {
     const invoice = await Invoice.findById(invoiceId);
     if (invoice && invoice.dueAmount > 0) {
-      await recordPayment(invoiceId, { amount: invoice.dueAmount, method: 'ONLINE', transactionId: entity.id, note: 'Webhook capture' }, null);
+      await capturePayment(invoiceId, invoice.dueAmount, entity.id, 'Webhook capture');
     }
   }
   return { received: true };

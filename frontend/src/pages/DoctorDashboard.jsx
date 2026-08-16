@@ -4,7 +4,7 @@ import { CalendarCheck, Users, Clock, Stethoscope, AlertCircle, ArrowRight } fro
 import Card from '../components/ui/Card.jsx';
 import Badge from '../components/ui/Badge.jsx';
 import Button from '../components/ui/Button.jsx';
-import Spinner from '../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../components/ui/Skeleton.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import OpdStartForm from './opd/OpdStartForm.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
@@ -59,7 +59,7 @@ export default function DoctorDashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <Spinner full />;
+  if (loading) return <PageSkeleton />;
 
   // Doctor account not linked to a doctor profile yet.
   if (!profile) {

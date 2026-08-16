@@ -76,69 +76,123 @@ export async function receiveBatch(medicineId, data, userId) {
     receivedBy: userId,
   });
 
-  medicine.currentStock += data.quantity;
-  await medicine.save();
+  // $inc rather than save() — a goods receipt landing at the same time as a
+  // dispense must add to whatever the stock is *now*, not to the value read
+  // at the top of this function.
+  await Medicine.updateOne({ _id: medicineId }, { $inc: { currentStock: data.quantity } });
   return batch;
 }
 
 // ---------- Dispense (FEFO stock reduction) ----------
+
+// Draw `quantity` units from real batches, earliest expiry first. Expired
+// batches are excluded — they must be written off via adjustStock, never
+// handed to a patient.
+//
+// Each batch is decremented with a conditional $inc rather than a read-modify-
+// write, so a concurrent dispense can never push a batch negative. Losing the
+// race on one batch is normal, not an error: we re-read and move to the next
+// one. Every successful decrement pushes its own undo onto `undo`.
+async function drawFromBatches(medicine, quantity, undo) {
+  const taken = new Map(); // batchNo -> units, merged across retries
+  let need = quantity;
+
+  for (let attempt = 0; attempt < 5 && need > 0; attempt += 1) {
+    const batches = await MedicineBatch.find({
+      medicine: medicine._id,
+      quantity: { $gt: 0 },
+      expiryDate: { $gte: new Date() },
+    }).sort({ expiryDate: 1 });
+    if (!batches.length) break;
+
+    let progressed = false;
+    for (const b of batches) {
+      if (need <= 0) break;
+      const take = Math.min(b.quantity, need);
+      const res = await MedicineBatch.updateOne(
+        { _id: b._id, quantity: { $gte: take } },
+        { $inc: { quantity: -take } }
+      );
+      if (!res.modifiedCount) continue; // someone else got there first — re-read
+
+      undo.push(() => MedicineBatch.updateOne({ _id: b._id }, { $inc: { quantity: take } }));
+      taken.set(b.batchNo, (taken.get(b.batchNo) || 0) + take);
+      need -= take;
+      progressed = true;
+    }
+    if (!progressed) break; // no batch could be drawn from at all
+  }
+
+  if (need > 0) {
+    throw ApiError.conflict(
+      `Insufficient non-expired batch stock for ${medicine.name} — some stock may have expired. Write it off via Adjust Stock.`,
+      'INSUFFICIENT_BATCH_STOCK'
+    );
+  }
+  return [...taken].map(([batchNo, qty]) => ({ batchNo, quantity: qty }));
+}
+
 export async function dispense(data, userId) {
   const lines = [];
   let total = 0;
   const lowStockMeds = [];
+  // Compensating actions for everything already written, newest first. Without
+  // this, a failure on the third line would leave the first two permanently
+  // deducted with no dispense record to show for it.
+  const undo = [];
 
-  for (const req of data.items) {
-    const medicine = await Medicine.findById(req.medicine);
-    if (!medicine) throw ApiError.badRequest(`Medicine not found`, 'MEDICINE_NOT_FOUND');
-    if (medicine.currentStock < req.quantity) {
-      throw ApiError.badRequest(`Insufficient stock for ${medicine.name} (have ${medicine.currentStock})`, 'INSUFFICIENT_STOCK');
-    }
-
-    // Draw from batches, earliest expiry first. Expired batches are excluded
-    // — they must be written off via adjustStock, never handed to a patient.
-    let need = req.quantity;
-    const usedBatches = [];
-    const batches = await MedicineBatch.find({ medicine: medicine._id, quantity: { $gt: 0 }, expiryDate: { $gte: new Date() } }).sort({ expiryDate: 1 });
-    for (const b of batches) {
-      if (need <= 0) break;
-      const take = Math.min(b.quantity, need);
-      b.quantity -= take;
-      await b.save();
-      usedBatches.push({ batchNo: b.batchNo, quantity: take });
-      need -= take;
-    }
-    if (need > 0) {
-      throw ApiError.badRequest(
-        `Insufficient non-expired batch stock for ${medicine.name} — some stock may have expired. Write it off via Adjust Stock.`,
-        'INSUFFICIENT_BATCH_STOCK'
+  try {
+    for (const req of data.items) {
+      // Reserve the aggregate stock in a single conditional update — this is
+      // the gate that makes overselling impossible. A read-then-check would
+      // let two concurrent dispenses both see enough stock and both proceed.
+      const medicine = await Medicine.findOneAndUpdate(
+        { _id: req.medicine, currentStock: { $gte: req.quantity } },
+        { $inc: { currentStock: -req.quantity } },
+        { new: true }
       );
+      if (!medicine) {
+        const existing = await Medicine.findById(req.medicine).select('name currentStock');
+        if (!existing) throw ApiError.badRequest('Medicine not found', 'MEDICINE_NOT_FOUND');
+        throw ApiError.conflict(
+          `Insufficient stock for ${existing.name} (have ${existing.currentStock})`,
+          'INSUFFICIENT_STOCK'
+        );
+      }
+      undo.push(() => Medicine.updateOne({ _id: medicine._id }, { $inc: { currentStock: req.quantity } }));
+
+      const usedBatches = await drawFromBatches(medicine, req.quantity, undo);
+
+      // currentStock is already post-decrement, so the "before" value is
+      // whatever we just took back off it.
+      const wasLow = medicine.currentStock + req.quantity <= medicine.minStock;
+      if (!wasLow && medicine.currentStock <= medicine.minStock) lowStockMeds.push(medicine);
+
+      const lineTotal = medicine.sellingPrice * req.quantity;
+      total += lineTotal;
+      lines.push({ medicine: medicine._id, name: medicine.name, quantity: req.quantity, sellingPrice: medicine.sellingPrice, lineTotal, batches: usedBatches });
     }
 
-    const wasLow = medicine.currentStock <= medicine.minStock;
-    medicine.currentStock -= req.quantity;
-    await medicine.save();
-    if (!wasLow && medicine.currentStock <= medicine.minStock) lowStockMeds.push(medicine);
-
-    const lineTotal = medicine.sellingPrice * req.quantity;
-    total += lineTotal;
-    lines.push({ medicine: medicine._id, name: medicine.name, quantity: req.quantity, sellingPrice: medicine.sellingPrice, lineTotal, batches: usedBatches });
-  }
-
-  const record = new MedicineDispense({
-    patient: data.patient || null, doctor: data.doctor || null, opdVisit: data.opdVisit || null,
-    items: lines, total, dispensedBy: userId,
-  });
-  await record.save();
-
-  for (const medicine of lowStockMeds) {
-    notify({
-      role: 'PHARMACIST', type: 'PHARMACY', title: 'Low stock alert',
-      message: `${medicine.name} is down to ${medicine.currentStock} unit(s) (min ${medicine.minStock}) — reorder soon.`,
-      link: '/pharmacy',
+    const record = new MedicineDispense({
+      patient: data.patient || null, doctor: data.doctor || null, opdVisit: data.opdVisit || null,
+      items: lines, total, dispensedBy: userId,
     });
-  }
+    await record.save();
 
-  return record.populate([{ path: 'patient', select: 'uhid firstName lastName' }, { path: 'doctor', select: 'firstName lastName' }]);
+    for (const medicine of lowStockMeds) {
+      notify({
+        role: 'PHARMACIST', type: 'PHARMACY', title: 'Low stock alert',
+        message: `${medicine.name} is down to ${medicine.currentStock} unit(s) (min ${medicine.minStock}) — reorder soon.`,
+        link: '/pharmacy',
+      });
+    }
+
+    return record.populate([{ path: 'patient', select: 'uhid firstName lastName' }, { path: 'doctor', select: 'firstName lastName' }]);
+  } catch (err) {
+    // Put every deducted unit back, in reverse order of how it was taken.
+    for (const revert of undo.reverse()) await revert().catch(() => {});
+    throw err;
+  }
 }
 
 const DISPENSE_POPULATE = [
@@ -234,11 +288,24 @@ export async function dispenseRowsForExport({ search, patient, doctor }) {
 // here: a negative delta draws down real batches FEFO, a positive one is
 // recorded as its own "correction" batch so the sum still adds up.
 export async function adjustStock(id, { delta, reason }, userId) {
-  const m = await Medicine.findById(id);
-  if (!m) throw ApiError.notFound('Medicine not found', 'MEDICINE_NOT_FOUND');
-  const next = m.currentStock + delta;
-  if (next < 0) {
-    throw ApiError.badRequest(`Adjustment would take stock below zero (have ${m.currentStock})`, 'STOCK_BELOW_ZERO');
+  // Apply the delta conditionally so two concurrent adjustments can't lose
+  // each other's write, and a negative one can never cross zero.
+  const filter = delta < 0 ? { _id: id, currentStock: { $gte: -delta } } : { _id: id };
+  const m = await Medicine.findOneAndUpdate(
+    filter,
+    {
+      $inc: { currentStock: delta },
+      $push: { stockAdjustments: { delta, reason, by: userId } },
+    },
+    { new: true }
+  );
+  if (!m) {
+    const existing = await Medicine.findById(id).select('currentStock');
+    if (!existing) throw ApiError.notFound('Medicine not found', 'MEDICINE_NOT_FOUND');
+    throw ApiError.badRequest(
+      `Adjustment would take stock below zero (have ${existing.currentStock})`,
+      'STOCK_BELOW_ZERO'
+    );
   }
 
   if (delta < 0) {
@@ -247,9 +314,8 @@ export async function adjustStock(id, { delta, reason }, userId) {
     for (const b of batches) {
       if (need <= 0) break;
       const take = Math.min(b.quantity, need);
-      b.quantity -= take;
-      await b.save();
-      need -= take;
+      const res = await MedicineBatch.updateOne({ _id: b._id, quantity: { $gte: take } }, { $inc: { quantity: -take } });
+      if (res.modifiedCount) need -= take;
     }
     // Any shortfall vs. recorded batches just means the batch ledger was
     // already out of sync — currentStock (the field being corrected) stays
@@ -267,17 +333,24 @@ export async function adjustStock(id, { delta, reason }, userId) {
     });
   }
 
-  m.currentStock = next;
-  m.stockAdjustments.push({ delta, reason, by: userId });
-  await m.save();
   return m;
 }
 
 // ---------- Return a dispense (patient hands back unused medicine) ----------
 export async function returnDispense(id, userId) {
-  const d = await MedicineDispense.findById(id);
-  if (!d) throw ApiError.notFound('Dispense record not found', 'DISPENSE_NOT_FOUND');
-  if (d.status === 'RETURNED') throw ApiError.badRequest('This dispense has already been returned', 'ALREADY_RETURNED');
+  // Flip the status first, conditionally: whoever wins gets to restore the
+  // stock exactly once. A read-then-check would let two concurrent returns
+  // both credit the stock back.
+  const d = await MedicineDispense.findOneAndUpdate(
+    { _id: id, status: { $ne: 'RETURNED' } },
+    { status: 'RETURNED', returnedAt: new Date(), returnedBy: userId },
+    { new: true }
+  );
+  if (!d) {
+    const exists = await MedicineDispense.exists({ _id: id });
+    if (!exists) throw ApiError.notFound('Dispense record not found', 'DISPENSE_NOT_FOUND');
+    throw ApiError.badRequest('This dispense has already been returned', 'ALREADY_RETURNED');
+  }
 
   for (const item of d.items) {
     // Restore stock to the exact batches it was drawn from.
@@ -287,10 +360,6 @@ export async function returnDispense(id, userId) {
     await Medicine.updateOne({ _id: item.medicine }, { $inc: { currentStock: item.quantity } });
   }
 
-  d.status = 'RETURNED';
-  d.returnedAt = new Date();
-  d.returnedBy = userId;
-  await d.save();
   return d.populate(DISPENSE_POPULATE);
 }
 

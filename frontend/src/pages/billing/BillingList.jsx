@@ -5,7 +5,7 @@ import Card from '../../components/ui/Card.jsx';
 import Button from '../../components/ui/Button.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import Select from '../../components/ui/Select.jsx';
-import Spinner from '../../components/ui/Spinner.jsx';
+import { ListSkeleton } from '../../components/ui/Skeleton.jsx';
 import EmptyState from '../../components/ui/EmptyState.jsx';
 import Pagination from '../../components/ui/Pagination.jsx';
 import NewInvoice from './NewInvoice.jsx';
@@ -130,7 +130,7 @@ export default function BillingList() {
       </div>
 
       <div className="card overflow-hidden">
-        {loading ? <Spinner full /> : items.length === 0 ? (
+        {loading ? <ListSkeleton /> : items.length === 0 ? (
           <EmptyState icon={Receipt} title="No invoices" description={canManage ? 'Create an invoice for a patient.' : 'Nothing here yet.'}
             action={canManage ? <Button onClick={() => setFormOpen(true)}><Plus className="h-4 w-4" /> New Invoice</Button> : null} />
         ) : (

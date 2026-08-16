@@ -11,7 +11,7 @@ import {
 import { useAuth } from '../context/AuthContext.jsx';
 import Card from '../components/ui/Card.jsx';
 import Badge from '../components/ui/Badge.jsx';
-import Spinner from '../components/ui/Spinner.jsx';
+import { PageSkeleton } from '../components/ui/Skeleton.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import DoctorDashboard from './DoctorDashboard.jsx';
 import { getPatientStats } from '../services/patientService.js';
@@ -100,7 +100,7 @@ export default function Dashboard() {
 
   // Doctors see a focused, personal dashboard.
   if (role === 'DOCTOR') return <DoctorDashboard />;
-  if (!data) return <Spinner full />;
+  if (!data) return <PageSkeleton />;
 
   const { patients, appt, doctors, opd, ipd, lab, pharmacy, billing, blood, summary, todayAppts } = data;
 
