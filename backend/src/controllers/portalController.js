@@ -8,7 +8,10 @@ import { ROLES } from '../config/roles.js';
 
 // ---- Public ----
 export const register = asyncHandler(async (req, res) => {
-  const result = await service.register(req.body);
+  // The tenant is baked into the issued token, exactly as it is on staff
+  // login — otherwise a patient's token would be the only kind that isn't
+  // bound to the hospital that issued it.
+  const result = await service.register(req.body, req.tenant);
   sendSuccess(res, { statusCode: 201, message: 'Registration successful', data: result });
 });
 

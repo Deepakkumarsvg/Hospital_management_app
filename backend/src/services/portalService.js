@@ -14,7 +14,7 @@ import { createAppointment, changeStatus, updateAppointment } from './appointmen
 import * as gateway from './paymentGatewayService.js';
 
 // Self-registration: creates a Patient profile + a linked PATIENT login.
-export async function register(data) {
+export async function register(data, tenant = null) {
   const email = data.email.toLowerCase();
   if (await User.findOne({ email })) {
     throw ApiError.conflict('An account with this email already exists', 'EMAIL_TAKEN');
@@ -41,7 +41,7 @@ export async function register(data) {
   await user.setPassword(data.password);
   await user.save();
 
-  const token = signToken({ sub: user._id.toString(), role: user.role });
+  const token = signToken({ sub: user._id.toString(), role: user.role, tenant: tenant?.slug || null });
   return { token, user: user.toSafeJSON(), patient };
 }
 

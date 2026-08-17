@@ -69,6 +69,36 @@ describe('Tenant isolation', () => {
     expect(res.body.error).toBe('TENANT_MISMATCH');
   });
 
+  it('rejects a token carrying no tenant claim at all', async () => {
+    // A token that simply omits the claim must not be a way around the check.
+    // (This is the shape older tokens had, and they used to be waved through.)
+    const jwt = (await import('jsonwebtoken')).default;
+    const claimless = jwt.sign({ sub: '000000000000000000000000', role: 'ADMIN' }, process.env.JWT_SECRET);
+
+    const res = await request(app).get('/api/patients').set(auth(claimless));
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe('TENANT_MISMATCH');
+  });
+
+  it('binds a self-registered patient token to the hospital that issued it', async () => {
+    const email = `selfreg-${Date.now()}@example.com`;
+    const reg = await request(app).post('/api/portal/register').set('X-Tenant', SLUG).send({
+      firstName: 'Self', lastName: 'Reg', gender: 'MALE', dateOfBirth: '1995-05-05',
+      phone: '9000000055', email, password: 'Patient@123',
+    });
+    expect(reg.status).toBe(201);
+    const patientToken = reg.body.data.token;
+
+    // Valid on the hospital it was issued for...
+    const ok = await request(app).get('/api/portal/me').set(tenantHeaders(patientToken, SLUG));
+    expect(ok.status).toBe(200);
+
+    // ...and refused on any other.
+    const wrong = await request(app).get('/api/portal/me').set(auth(patientToken));
+    expect(wrong.status).toBe(401);
+    expect(wrong.body.error).toBe('TENANT_MISMATCH');
+  });
+
   it('lists both tenants in the registry', async () => {
     const res = await request(app).get('/api/ops/tenants').set(auth(defaultToken));
     const slugs = res.body.data.map((t) => t.slug);

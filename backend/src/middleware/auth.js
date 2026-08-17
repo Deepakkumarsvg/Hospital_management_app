@@ -16,9 +16,16 @@ export async function authenticate(req, _res, next) {
       throw ApiError.unauthorized('Invalid or expired token', 'INVALID_TOKEN');
     }
 
-    // Security: a token minted for one hospital cannot be used on another.
-    // (Older tokens without a tenant claim are allowed on the resolved tenant.)
-    if (decoded.tenant && req.tenant && decoded.tenant !== req.tenant.slug) {
+    // Security: a token is bound to the hospital that issued it.
+    //
+    // A missing tenant claim is treated the same as a wrong one. Allowing
+    // claimless tokens through — as this used to — meant the guarantee was
+    // only as strong as whichever code path minted the token, and any path
+    // that forgot the claim silently opted out of the check.
+    //
+    // Tokens issued before this are rejected; they expire within JWT_EXPIRES_IN
+    // (a day by default), and the client treats a 401 as "sign in again".
+    if (req.tenant && decoded.tenant !== req.tenant.slug) {
       throw ApiError.unauthorized('Token does not belong to this hospital', 'TENANT_MISMATCH');
     }
 

@@ -3,7 +3,7 @@
 Senior-review se nikli list. Priority order me, ek-ek karke fix ho rahi hai.
 Status: ⬜ pending · 🔨 in progress · ✅ done
 
-**Progress: 10 done · test suite 26 → 90 tests, all passing.**
+**Progress: 13 done · test suite 26 → 98 tests, all passing.**
 
 The test suite now boots its own in-memory MongoDB (single-node replica set),
 so `npm test` needs nothing installed — see `tests/globalSetup.js`.
@@ -27,7 +27,7 @@ so `npm test` needs nothing installed — see `tests/globalSetup.js`.
 |---|------|-------|--------|
 | 7 | `trust proxy` + portal-register limiter (auth routes were already limited) | `app.js`, `routes/portalRoutes.js`, `docker-compose.yml` | ✅ |
 | 8 | Magic-byte sniffing + inert download headers (all 3 file-serving paths) | `utils/fileType.js`, `utils/serveFile.js`, `middleware/upload.js` | ✅ |
-| 9 | Tenant claim consistency (portal tokens) | `services/portalService.js`, `middleware/auth.js` | ⬜ |
+| 9 | Tenant claim required on every token (portal tokens carried none) | `utils/jwt.js`, `middleware/auth.js`, `services/portalService.js` | ✅ |
 | 10 | Audit trail — full coverage + PHI read logging + immutability | `utils/audit.js`, `models/AuditLog.js`, controllers | ⬜ |
 | 11 | Dynamic RBAC actually enforced (`requirePermission`) | `middleware/rbac.js`, all routes | ⬜ |
 | 12 | Refresh tokens + revocation (httpOnly cookie) | `services/authService.js`, `middleware/auth.js` | ⬜ |
@@ -37,7 +37,7 @@ so `npm test` needs nothing installed — see `tests/globalSetup.js`.
 
 | # | Item | Files | Status |
 |---|------|-------|--------|
-| 14 | Graceful shutdown (SIGTERM) | `server.js` | ⬜ |
+| 14 | Graceful shutdown — drain in-flight requests, then close the DB | `shutdown.js`, `server.js` | ✅ |
 | 15 | Real health check (DB ping) + 503 on DB outage + friendly client errors | `routes/index.js`, `middleware/errorHandler.js`, `frontend/services/api.js` | ✅ |
 | 16 | Scheduler leader-lock (duplicate reminders on multi-instance) | `services/scheduler.js` | ⬜ |
 | 17 | ESLint + Prettier + CI lint step | root, `.github/workflows/ci.yml` | ⬜ |
@@ -72,5 +72,5 @@ so `npm test` needs nothing installed — see `tests/globalSetup.js`.
 | # | Item | Files | Status |
 |---|------|-------|--------|
 | 23 | Error boundary | `components/ErrorBoundary.jsx` | ⬜ |
-| 24 | Loading skeletons | `components/ui/Skeleton.jsx` | ⬜ |
+| 24 | Loading skeletons | `components/ui/Skeleton.jsx`, `PageLoader.jsx` | ✅ |
 | 25 | Accessibility (keyboard rows, aria, focus trap) | UI components | ⬜ |

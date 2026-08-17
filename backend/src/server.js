@@ -5,6 +5,7 @@ import { connectDB } from './config/database.js';
 import { startScheduler } from './services/scheduler.js';
 import { ensureDefaultTenant } from './services/tenantService.js';
 import { probeTransactionSupport } from './db/withTransaction.js';
+import { installShutdownHandlers } from './shutdown.js';
 
 async function start() {
   await connectDB(env.mongoUri);
@@ -25,10 +26,12 @@ async function start() {
   const tenant = await ensureDefaultTenant();
   console.log(`✓ Control plane ready · default tenant "${tenant.slug}" → ${tenant.dbName}`);
   const app = createApp();
-  app.listen(env.port, () => {
+  const server = app.listen(env.port, () => {
     console.log(`✓ HMS API running on http://localhost:${env.port} [${env.nodeEnv}]`);
     startScheduler();
   });
+
+  installShutdownHandlers(server);
 }
 
 start().catch((err) => {
