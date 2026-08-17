@@ -70,14 +70,22 @@ npm run seed:fresh    # + demo data (skip this for a real hospital)
 
 ## 4. Frontend on Vercel
 
-Vercel → **Add New → Project** → import this repo:
+Vercel → **Add New → Project** → import this repo, and **leave Root Directory
+at the repository root** (the default). The root
+[`vercel.json`](../vercel.json) builds the frontend out of `frontend/`.
 
-- **Root Directory:** `frontend`
-- Framework preset, build command and output directory are read from
-  [`frontend/vercel.json`](../frontend/vercel.json).
+> This repo has no `package.json` at its root — it holds `backend/` and
+> `frontend/` side by side. Vercel would normally fail with
+> *"Failed to locate `package.json` file in your project"*; the explicit
+> `installCommand` / `buildCommand` / `outputDirectory` in the root
+> `vercel.json` are what tell it where to look.
+>
+> If you would rather set **Root Directory** to `frontend`, that works too —
+> Vercel then reads [`frontend/vercel.json`](../frontend/vercel.json) instead
+> and ignores the root one. The two files are kept equivalent; whichever you
+> use, the Render URL below has to be right **in that file**.
 
-**Before the first deploy, edit `frontend/vercel.json`** and replace the API
-host with your actual Render URL:
+**Before the first deploy, replace the API host** with your actual Render URL:
 
 ```json
 { "source": "/api/:path*", "destination": "https://YOUR-SERVICE.onrender.com/api/:path*" }
@@ -87,6 +95,10 @@ This proxy is what makes the client's relative `/api` base URL work in
 production. It also keeps every request same-origin, so there is no CORS
 preflight and no third-party-cookie problem, and the backend URL never reaches
 the browser.
+
+The catch-all rewrite below it is the SPA fallback — React Router owns every
+other path, and without it a hard refresh on `/patients/123` is a 404 from
+Vercel. Static files are matched before rewrites, so assets still resolve.
 
 Finally, set `CLIENT_URL` on Render to the Vercel URL and redeploy the backend.
 
@@ -111,6 +123,29 @@ npm run migrate:slotday
 ```
 
 ---
+
+## Troubleshooting
+
+**Vercel: "Failed to locate `package.json` file in your project"**
+Root Directory is set to something with no `package.json` and no build config.
+Either clear it back to the repository root (the root `vercel.json` handles the
+rest) or set it to `frontend`.
+
+**The app loads but every request 404s or fails**
+The `/api` rewrite still points at the placeholder Render URL. Fix the
+`destination` in whichever `vercel.json` your Root Directory setting uses.
+
+**Login returns 500, `/api/health` says `"database":"down"`**
+Atlas is refusing the connection. Almost always the IP allowlist (`0.0.0.0/0`
+needed for Render) or a paused M0 cluster.
+
+**Render: the service boots then immediately exits**
+Read the log — the startup validation names the exact variable. A `JWT_SECRET`
+under 32 characters, a wildcard `CLIENT_URL`, and `STORAGE_DRIVER=s3` without
+credentials each refuse to start on purpose.
+
+**Uploads work, then files disappear after a deploy**
+`STORAGE_DRIVER` is still `local`. See step 1.
 
 ## Free-tier limits
 
