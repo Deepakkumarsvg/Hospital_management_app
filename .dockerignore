@@ -1,0 +1,15 @@
+# Keep the build context small and free of anything host-specific.
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+!**/.env.example
+
+.git
+.github
+docs
+*.md
+
+backend/uploads
+backend/coverage
+frontend/dist

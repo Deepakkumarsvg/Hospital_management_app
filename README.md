@@ -98,11 +98,12 @@ npm run dev               # http://localhost:5173
 
 Vite proxies `/api` → `http://localhost:5000`, so no CORS setup is needed in dev.
 
-### 3. Deploy to the cloud (Vercel + Render + Atlas)
-Frontend on Vercel, API on Render, MongoDB on Atlas, uploads in an
-S3-compatible bucket. Blueprints are in the repo (`render.yaml`,
-`frontend/vercel.json`) — full walkthrough, including the free-tier caveats:
-**[Deployment guide](./docs/DEPLOYMENT.md)**.
+### 3. Deploy to the cloud (Render + Atlas)
+One service: the root `Dockerfile` builds the SPA and serves it from the Express
+process, so the whole app runs on a single URL with no CORS to configure.
+MongoDB on Atlas, uploads in an S3-compatible bucket. `render.yaml` is a
+one-click blueprint — full walkthrough, including the free-tier caveats and the
+optional Vercel split: **[Deployment guide](./docs/DEPLOYMENT.md)**.
 
 ### 4. One-command deploy (Docker)
 ```bash

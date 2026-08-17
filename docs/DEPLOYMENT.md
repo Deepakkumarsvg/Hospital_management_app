@@ -1,13 +1,24 @@
-# Deploying HMS — Vercel + Render + Atlas
+# Deploying HMS — Render + Atlas
+
+**One service.** The root `Dockerfile` builds the React frontend and serves it
+from the Express process, so the whole app is a single deployment on a single
+URL.
 
 | Piece | Host | Why |
 | ----- | ---- | --- |
-| Frontend (Vite SPA) | **Vercel** | Static build on a CDN |
-| Backend (Express) | **Render** | Needs a long-lived process: one Mongoose pool, AsyncLocalStorage tenant context, in-process scheduler. None of that survives a serverless function. |
+| App (SPA + API) | **Render** | Needs a long-lived process: one Mongoose pool, AsyncLocalStorage tenant context, in-process scheduler. None of that survives a serverless function. |
 | Database | **MongoDB Atlas** | Already a replica set, so transactions work |
 | Uploads | **S3-compatible bucket** | Render's filesystem is wiped on every deploy |
 
 Total cost on the free tiers: **₹0** — with the caveats in [Free-tier limits](#free-tier-limits).
+
+Because the browser only ever talks to its own origin, there is no CORS to
+configure, no cross-origin cookie question, and no pair of URLs to keep in sync.
+Most of what can go wrong in a two-host setup simply isn't there.
+
+> **Prefer the frontend on a CDN?** Splitting it onto Vercel still works — see
+> [Two-host setup](#appendix-two-host-setup-vercel--render) at the end. Start
+> here unless you have a reason not to.
 
 ---
 
@@ -38,22 +49,35 @@ password — but rotate them if they have ever been committed or shared.
 
 Check the cluster is not **paused** (free M0 clusters pause after 60 days idle).
 
-## 3. Backend on Render
+## 3. The app on Render
 
 Render → **New → Blueprint** → select this repo. [`render.yaml`](../render.yaml)
 defines the service; Render prompts for the secrets.
+
+It builds the root [`Dockerfile`](../Dockerfile): the frontend is compiled in
+one stage, then copied into the API image as `backend/public`, which is the
+first place the server looks for a build. Both `backend/` and `frontend/` have
+to be in the build context, which is why the Dockerfile lives at the root and
+no `rootDir` is set.
+
+> Setting up the service by hand instead? Choose **Docker** as the runtime and
+> leave the root directory empty. Pointing it at `backend/` makes Render build
+> `backend/Dockerfile`, which is API-only and has no frontend in it.
 
 | Variable | Value |
 | -------- | ----- |
 | `MONGODB_URI` | Atlas connection string |
 | `JWT_SECRET` | 32+ chars — `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
-| `CLIENT_URL` | Your Vercel origin, e.g. `https://hms.vercel.app` — no trailing slash |
+| `CLIENT_URL` | This service's own URL, e.g. `https://hms.onrender.com` — no trailing slash |
 | `S3_BUCKET` | `hms-uploads` |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | From step 1 |
 | `S3_ENDPOINT` | R2: `https://<account-id>.r2.cloudflarestorage.com` · AWS: leave unset |
 
 `NODE_ENV`, `TRUST_PROXY`, `STORAGE_DRIVER` and `S3_REGION` are already set in
 the blueprint.
+
+`CLIENT_URL` is not doing CORS here — everything is same-origin — but a
+password-reset email still needs an absolute link, so it has to be right.
 
 > The server validates all of this at startup and **refuses to boot** on a weak
 > `JWT_SECRET`, a wildcard `CLIENT_URL`, or `STORAGE_DRIVER=s3` with missing
@@ -68,41 +92,7 @@ npm run seed          # roles, departments, admin
 npm run seed:fresh    # + demo data (skip this for a real hospital)
 ```
 
-## 4. Frontend on Vercel
-
-Vercel → **Add New → Project** → import this repo, and **leave Root Directory
-at the repository root** (the default). The root
-[`vercel.json`](../vercel.json) builds the frontend out of `frontend/`.
-
-> This repo has no `package.json` at its root — it holds `backend/` and
-> `frontend/` side by side. Vercel would normally fail with
-> *"Failed to locate `package.json` file in your project"*; the explicit
-> `installCommand` / `buildCommand` / `outputDirectory` in the root
-> `vercel.json` are what tell it where to look.
->
-> If you would rather set **Root Directory** to `frontend`, that works too —
-> Vercel then reads [`frontend/vercel.json`](../frontend/vercel.json) instead
-> and ignores the root one. The two files are kept equivalent; whichever you
-> use, the Render URL below has to be right **in that file**.
-
-**Before the first deploy, replace the API host** with your actual Render URL:
-
-```json
-{ "source": "/api/:path*", "destination": "https://YOUR-SERVICE.onrender.com/api/:path*" }
-```
-
-This proxy is what makes the client's relative `/api` base URL work in
-production. It also keeps every request same-origin, so there is no CORS
-preflight and no third-party-cookie problem, and the backend URL never reaches
-the browser.
-
-The catch-all rewrite below it is the SPA fallback — React Router owns every
-other path, and without it a hard refresh on `/patients/123` is a 404 from
-Vercel. Static files are matched before rewrites, so assets still resolve.
-
-Finally, set `CLIENT_URL` on Render to the Vercel URL and redeploy the backend.
-
-## 5. Post-deploy checks
+## 4. Post-deploy checks
 
 ```bash
 curl https://YOUR-SERVICE.onrender.com/api/health
@@ -126,14 +116,19 @@ npm run migrate:slotday
 
 ## Troubleshooting
 
-**Vercel: "Failed to locate `package.json` file in your project"**
-Root Directory is set to something with no `package.json` and no build config.
-Either clear it back to the repository root (the root `vercel.json` handles the
-rest) or set it to `frontend`.
+**Render: `failed to read dockerfile: open Dockerfile: no such file or directory`**
+The service's root directory points somewhere without a Dockerfile. Clear it —
+the Dockerfile is at the repository root and needs both `backend/` and
+`frontend/` in its build context.
 
-**The app loads but every request 404s or fails**
-The `/api` rewrite still points at the placeholder Render URL. Fix the
-`destination` in whichever `vercel.json` your Root Directory setting uses.
+**The app loads but the page is blank, with a CSP error in the console**
+`index.html` gained an inline script whose hash isn't allowed. The hash is
+computed from the built file at startup, so this only happens if the build is
+stale — rebuild rather than adding `'unsafe-inline'`.
+
+**`/` returns `{"message":"HMS API"}` instead of the app**
+The image has no frontend build in it. That's `backend/Dockerfile` (API-only),
+not the root one — check which Dockerfile the service is building.
 
 **Login returns 500, `/api/health` says `"database":"down"`**
 Atlas is refusing the connection. Almost always the IP allowlist (`0.0.0.0/0`
@@ -151,9 +146,13 @@ credentials each refuse to start on purpose.
 
 These are real constraints, not warnings to skim:
 
-**The API sleeps after 15 minutes of inactivity.** The first request afterwards
-takes 30–60 seconds while the container starts. Fine for a demo; not fine for a
-hospital front desk. Render's Starter plan ($7/month) stays awake.
+**The service sleeps after 15 minutes of inactivity.** The first request
+afterwards takes 30–60 seconds while the container starts — and because this
+one service also serves the frontend, that wait applies to opening the page at
+all, not just to the first API call. Fine for a demo; not fine for a hospital
+front desk. Render's Starter plan ($7/month) stays awake. (This is the one real
+advantage of the two-host setup below: the page itself loads instantly from
+Vercel's CDN while the API wakes up.)
 
 **Appointment reminders will not run reliably.** The scheduler is an in-process
 `setInterval`, and a sleeping service has no process. Drive it externally
@@ -182,3 +181,41 @@ two:
   duplicate reminders. Move it to BullMQ, or to an external cron as above.
 
 Uploads are already on object storage, so that side scales as-is.
+
+---
+
+## Appendix: two-host setup (Vercel + Render)
+
+Worth it for one reason: the frontend loads from a CDN and never sleeps, so the
+page appears instantly even while the free-tier API is waking up. The cost is a
+second dashboard and two URLs that have to agree.
+
+1. Deploy the API to Render exactly as above. The image still contains the
+   frontend; it just goes unused.
+2. Vercel → **Add New → Project** → import this repo, and **leave Root
+   Directory at the repository root**. The root [`vercel.json`](../vercel.json)
+   builds the frontend out of `frontend/`.
+
+   > This repo has no `package.json` at its root, so Vercel would otherwise
+   > fail with *"Failed to locate `package.json` file in your project"*. The
+   > explicit `installCommand` / `buildCommand` / `outputDirectory` in that file
+   > are what tell it where to look. Setting Root Directory to `frontend`
+   > instead also works — Vercel then reads
+   > [`frontend/vercel.json`](../frontend/vercel.json) and ignores the root one.
+
+3. In whichever of those two files applies, point the API rewrite at your
+   Render URL:
+
+   ```json
+   { "source": "/api/:path*", "destination": "https://YOUR-SERVICE.onrender.com/api/:path*" }
+   ```
+
+   The proxy is what makes the client's relative `/api` base URL work, and it
+   keeps requests same-origin so there is still no CORS involved. The catch-all
+   rewrite below it is the SPA fallback; static files are matched before
+   rewrites, so assets resolve on their own.
+
+4. Set `CLIENT_URL` on Render to the **Vercel** origin, and redeploy.
+
+The failure mode to watch for: the app loads but every request fails, because
+the rewrite is still pointing at the placeholder host.

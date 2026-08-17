@@ -1,18 +1,21 @@
-# Render blueprint for the HMS API.
+# Render blueprint for HMS — the whole application as one service.
 #
 # Render → New → Blueprint → point at this repo. Everything below is created
-# automatically; the four values marked `sync: false` are prompted for on
-# first deploy and never stored in the repo.
+# automatically; the values marked `sync: false` are prompted for on first
+# deploy and never stored in the repo.
 #
-# The frontend is NOT here — it deploys to Vercel (see frontend/vercel.json).
+# The root Dockerfile builds the React frontend and serves it from the Express
+# process, so this is a single service on a single URL. Splitting the frontend
+# onto Vercel instead is still supported — see docs/DEPLOYMENT.md.
 services:
   - type: web
-    name: hms-api
-    runtime: node
+    name: hms
+    runtime: docker
     plan: free
-    rootDir: backend
-    buildCommand: npm ci
-    startCommand: npm start
+    # The Dockerfile is at the repository root and needs both backend/ and
+    # frontend/ in its build context, so neither rootDir nor dockerContext is
+    # narrowed here.
+    dockerfilePath: ./Dockerfile
 
     # Render restarts the service if this stops returning 2xx. The endpoint
     # pings MongoDB rather than just confirming the process is alive, so a
@@ -47,8 +50,10 @@ services:
       - key: JWT_SECRET
         sync: false
 
-      # The Vercel origin, e.g. https://hms.vercel.app — no trailing slash.
-      # A wildcard is rejected in production.
+      # This service's own URL, e.g. https://hms.onrender.com — no trailing
+      # slash. Since the frontend is served from the same origin there is no
+      # CORS to configure, but password-reset emails still need an absolute
+      # link, so it must be set. A wildcard is rejected in production.
       - key: CLIENT_URL
         sync: false
 

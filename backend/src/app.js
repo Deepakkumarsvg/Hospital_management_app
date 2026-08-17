@@ -7,6 +7,7 @@ import pinoHttp from 'pino-http';
 import routes from './routes/index.js';
 import { resolveTenant, tenantScope } from './middleware/tenant.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
+import { findFrontendBuild, inlineScriptHashes, mountStaticSite } from './staticSite.js';
 
 export function createApp() {
   const app = express();
@@ -40,8 +41,35 @@ export function createApp() {
     );
   }
 
+  // When the frontend is built into this image we serve it ourselves, which
+  // changes what the security headers have to allow. Resolved up front because
+  // helmet is configured from it.
+  const dist = findFrontendBuild();
+
   // Security & parsing
-  app.use(helmet());
+  app.use(
+    helmet(
+      dist
+        ? {
+            // Serving HTML means the CSP now governs a real page, not just
+            // JSON. Keep helmet's strict defaults and widen only what the
+            // app genuinely needs — the inline theme script, by hash.
+            contentSecurityPolicy: {
+              directives: {
+                ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+                'script-src': ["'self'", ...inlineScriptHashes(dist)],
+                // Everything the client talks to is same-origin.
+                'connect-src': ["'self'"],
+                // Patient photos and generated QR codes are data: URIs.
+                'img-src': ["'self'", 'data:', 'blob:'],
+                // PDFs are opened in a new tab from a blob URL.
+                'object-src': ["'none'"],
+              },
+            },
+          }
+        : undefined
+    )
+  );
   app.use(
     cors({
       origin: process.env.CLIENT_URL || '*',
@@ -70,12 +98,21 @@ export function createApp() {
     })
   );
 
-  app.get('/', (_req, res) => {
-    res.json({ success: true, message: 'HMS API', data: { version: '1.0.0' } });
-  });
-
   // Resolve tenant + bind its DB connection into async context before any route.
   app.use('/api', resolveTenant, tenantScope, routes);
+
+  // Serve the built frontend, when there is one (single-service deployment).
+  // Mounted after the API so /api always wins, and before the 404 handler so
+  // client-side routes resolve to the app shell.
+  if (dist) {
+    mountStaticSite(app, dist);
+  } else {
+    // No build present — this process is the API alone (development, or a
+    // deployment where the frontend is hosted separately).
+    app.get('/', (_req, res) => {
+      res.json({ success: true, message: 'HMS API', data: { version: '1.0.0' } });
+    });
+  }
 
   // 404 + centralized error handling (must be last).
   app.use(notFoundHandler);

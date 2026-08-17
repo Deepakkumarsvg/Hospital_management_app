@@ -4,3 +4,5 @@ node_modules/
 uploads/
 dist/
 coverage/
+# The frontend build, copied in by the Docker image so the API can serve it.
+public/

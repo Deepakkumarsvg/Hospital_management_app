@@ -14,6 +14,11 @@ process.env.MONGODB_URI = TEST_URI;
 process.env.CONTROL_DB = 'hms_control_test';
 process.env.DEFAULT_TENANT_DB = 'hms_test';           // default tenant uses the test DB
 process.env.TENANCY_MODE = 'header';
+// Point at a directory that holds no build, which puts the app in API-only
+// mode. Otherwise these tests would behave differently depending on whether
+// someone had run `npm run build` in frontend/ — the SPA fallback would start
+// answering unmatched routes with the app shell instead of a 404.
+process.env.FRONTEND_DIST = '/nonexistent-frontend-build';
 
 const { createApp } = await import('../src/app.js');
 const { Role } = await import('../src/models/Role.js');
