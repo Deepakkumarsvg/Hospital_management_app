@@ -50,15 +50,16 @@ services:
       - key: JWT_SECRET
         sync: false
 
-      # This service's own URL, e.g. https://hms.onrender.com — no trailing
-      # slash. Since the frontend is served from the same origin there is no
-      # CORS to configure, but password-reset emails still need an absolute
-      # link, so it must be set. A wildcard is rejected in production.
-      - key: CLIENT_URL
-        sync: false
+      # CLIENT_URL is intentionally absent: the app falls back to Render's own
+      # RENDER_EXTERNAL_URL, so it is correct from the very first deploy. Add
+      # it by hand only when putting a custom domain in front.
 
       # S3-compatible bucket. For Cloudflare R2 also set S3_ENDPOINT to
       # https://<account-id>.r2.cloudflarestorage.com and S3_REGION to "auto".
+      #
+      # To get a first deploy up before object storage exists, change
+      # STORAGE_DRIVER above to "local" and leave these blank — the app boots
+      # with a warning, and uploaded files are lost on the next deploy.
       - key: S3_BUCKET
         sync: false
       - key: S3_ACCESS_KEY_ID

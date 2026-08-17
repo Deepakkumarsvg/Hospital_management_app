@@ -15,6 +15,24 @@ function fail(messages) {
   process.exit(1);
 }
 
+// The origin the browser will use. Needed for CORS and for the absolute links
+// in password-reset emails.
+//
+// A host's own injected URL is used when CLIENT_URL isn't set, because the
+// service's address isn't knowable until it exists — requiring it up front
+// means the very first deploy fails on a value you can only read off the
+// dashboard afterwards. Render provides RENDER_EXTERNAL_URL; Railway and Fly
+// have equivalents.
+function resolveClientUrl() {
+  const explicit = process.env.CLIENT_URL;
+  if (explicit && explicit !== '*') return explicit.replace(/\/$/, '');
+
+  const injected = process.env.RENDER_EXTERNAL_URL;
+  if (injected) return injected.replace(/\/$/, '');
+
+  return null;
+}
+
 function validate() {
   const errors = [];
 
@@ -31,8 +49,11 @@ function validate() {
     errors.push('JWT_SECRET must be at least 32 characters in production.');
   }
 
-  if (isProd && (!process.env.CLIENT_URL || process.env.CLIENT_URL === '*')) {
-    errors.push('CLIENT_URL must be an explicit origin in production (wildcard CORS is unsafe).');
+  if (isProd && !resolveClientUrl()) {
+    errors.push(
+      'CLIENT_URL must be an explicit origin in production (wildcard CORS is unsafe). ' +
+      'On Render this is filled in automatically from RENDER_EXTERNAL_URL.'
+    );
   }
 
   const driver = (process.env.STORAGE_DRIVER || 'local').toLowerCase();
@@ -66,7 +87,9 @@ export const env = {
   mongoUri: process.env.MONGODB_URI,
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1d',
-  clientUrl: process.env.CLIENT_URL || '*',
+  // In development this falls back to '*', which is what makes the Vite dev
+  // server work without any CORS configuration.
+  clientUrl: resolveClientUrl() || '*',
   storageDriver: process.env.STORAGE_DRIVER || 'local',
 
   // --- Multi-tenancy (DB-per-tenant) ---

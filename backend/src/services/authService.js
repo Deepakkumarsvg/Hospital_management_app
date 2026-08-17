@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { env } from '../config/env.js';
 import { User } from '../models/User.js';
 import { ApiError } from '../utils/ApiError.js';
 import { signToken } from '../utils/jwt.js';
@@ -85,7 +86,7 @@ export async function requestPasswordReset(email, { tenantSlug, clientUrl } = {}
   await user.save();
 
   const settings = await getSettings().catch(() => null);
-  const base = (clientUrl || process.env.CLIENT_URL || '').replace(/\/$/, '');
+  const base = (clientUrl || env.clientUrl || '').replace(/\/$/, '');
   const link = `${base}/reset-password?token=${rawToken}${tenantSlug ? `&hospital=${encodeURIComponent(tenantSlug)}` : ''}`;
 
   await deliver({

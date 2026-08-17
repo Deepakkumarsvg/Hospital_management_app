@@ -4,6 +4,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
+import { env } from './config/env.js';
 import routes from './routes/index.js';
 import { resolveTenant, tenantScope } from './middleware/tenant.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
@@ -72,7 +73,7 @@ export function createApp() {
   );
   app.use(
     cors({
-      origin: process.env.CLIENT_URL || '*',
+      origin: env.clientUrl,
       credentials: true,
     })
   );
