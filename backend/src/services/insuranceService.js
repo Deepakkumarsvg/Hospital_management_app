@@ -1,8 +1,7 @@
-import path from 'path';
 import { InsuranceClaim, CLAIM_TRANSITIONS } from '../models/InsuranceClaim.js';
 import { ClaimDocument, CLAIM_DOCUMENT_CATEGORIES } from '../models/ClaimDocument.js';
 import { Invoice } from '../models/Invoice.js';
-import { Payment } from '../models/Payment.js';
+import { recordPayment } from './billingService.js';
 import { Patient } from '../models/Patient.js';
 import { ApiError } from '../utils/ApiError.js';
 import { removeObject } from '../config/storage.js';
@@ -62,45 +61,71 @@ export async function changeStatus(id, { status, approvedAmount, note }, userId)
   const claim = await InsuranceClaim.findById(id);
   if (!claim) throw ApiError.notFound('Claim not found', 'CLAIM_NOT_FOUND');
 
-  const allowed = CLAIM_TRANSITIONS[claim.status] || [];
+  const from = claim.status;
+  const allowed = CLAIM_TRANSITIONS[from] || [];
   if (!allowed.includes(status)) {
-    throw ApiError.badRequest(`Cannot change status from ${claim.status} to ${status}`, 'INVALID_STATUS_TRANSITION');
+    throw ApiError.badRequest(`Cannot change status from ${from} to ${status}`, 'INVALID_STATUS_TRANSITION');
   }
 
+  const changes = { status };
   if (status === 'APPROVED') {
     if (approvedAmount === undefined) throw ApiError.badRequest('Approved amount is required', 'APPROVED_AMOUNT_REQUIRED');
     if (approvedAmount > claim.claimAmount) throw ApiError.badRequest('Approved amount cannot exceed claim amount', 'APPROVED_EXCEEDS_CLAIM');
-    claim.approvedAmount = approvedAmount;
-    claim.rejectedAmount = Math.round((claim.claimAmount - approvedAmount) * 100) / 100;
+    changes.approvedAmount = approvedAmount;
+    changes.rejectedAmount = Math.round((claim.claimAmount - approvedAmount) * 100) / 100;
   }
   if (status === 'REJECTED') {
-    claim.approvedAmount = 0;
-    claim.rejectedAmount = claim.claimAmount;
+    changes.approvedAmount = 0;
+    changes.rejectedAmount = claim.claimAmount;
   }
   if (status === 'DRAFT') {
     // Reopening a rejected claim for correction — clear the stale outcome.
-    claim.approvedAmount = 0;
-    claim.rejectedAmount = 0;
+    changes.approvedAmount = 0;
+    changes.rejectedAmount = 0;
   }
 
-  claim.status = status;
-  claim.history.push({ status, by: userId, note: note || '' });
-  await claim.save();
+  // Requiring the status to still be what we validated against makes the
+  // transition atomic: two clerks settling the same claim at once cannot both
+  // get through and post the settlement payment twice.
+  const updated = await InsuranceClaim.findOneAndUpdate(
+    { _id: id, status: from },
+    { $set: changes, $push: { history: { status, by: userId, note: note || '' } } },
+    { new: true }
+  );
+  if (!updated) {
+    throw ApiError.conflict(
+      'This claim was updated by someone else — reload and try again',
+      'CLAIM_CHANGED'
+    );
+  }
 
   // Settling an approved claim posts an INSURANCE payment against the invoice.
-  if (status === 'SETTLED' && claim.invoice && claim.approvedAmount > 0) {
-    const invoice = await Invoice.findById(claim.invoice);
+  //
+  // This goes through recordPayment rather than adjusting the invoice by hand:
+  // that is the only path where the overpayment rule and the paid/due/status
+  // recalculation happen in a single atomic update, so a settlement landing at
+  // the same moment as a cash payment can't overshoot the total or lose one of
+  // the two. The claim number doubles as the payment's transaction id, which
+  // the unique index turns into idempotency — a replayed settlement is
+  // rejected rather than banked twice.
+  if (status === 'SETTLED' && updated.invoice && updated.approvedAmount > 0) {
+    const invoice = await Invoice.findById(updated.invoice).select('status dueAmount');
     if (invoice && !['CANCELLED', 'REFUNDED'].includes(invoice.status)) {
-      const pay = Math.min(claim.approvedAmount, invoice.dueAmount);
+      const pay = Math.min(updated.approvedAmount, invoice.dueAmount);
       if (pay > 0) {
-        await Payment.create({ invoice: invoice._id, patient: invoice.patient, amount: pay, method: 'INSURANCE', transactionId: claim.claimNo, note: 'Insurance settlement', receivedBy: userId });
-        invoice.paidAmount = Math.round((invoice.paidAmount + pay) * 100) / 100;
-        invoice.recompute();
-        await invoice.save();
+        await recordPayment(
+          updated.invoice,
+          { amount: pay, method: 'INSURANCE', transactionId: updated.claimNo, note: 'Insurance settlement' },
+          userId
+        ).catch((err) => {
+          // The claim is settled either way; a payment that was already
+          // recorded is the expected outcome of a retry, not a failure.
+          if (err?.errorCode !== 'PAYMENT_ALREADY_RECORDED') throw err;
+        });
       }
     }
   }
-  return claim.populate(POPULATE);
+  return updated.populate(POPULATE);
 }
 
 // Claim documents (pre-auth letters, discharge summaries, bills, policy copies)

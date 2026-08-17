@@ -3,7 +3,7 @@
 Senior-review se nikli list. Priority order me, ek-ek karke fix ho rahi hai.
 Status: ⬜ pending · 🔨 in progress · ✅ done
 
-**Progress: 9 done · test suite 26 → 85 tests, all passing.**
+**Progress: 10 done · test suite 26 → 90 tests, all passing.**
 
 The test suite now boots its own in-memory MongoDB (single-node replica set),
 so `npm test` needs nothing installed — see `tests/globalSetup.js`.
@@ -61,11 +61,11 @@ so `npm test` needs nothing installed — see `tests/globalSetup.js`.
 | D3 | Redis-backed rate limiting (needed before >1 instance) | `app.js` | ⬜ |
 | D4 | Scheduler off the web process (BullMQ or external cron) | `services/scheduler.js` | ⬜ |
 
-## 🐛 Found along the way (not yet fixed)
+## 🐛 Found along the way
 
-| Item | Where | Why it matters |
-|------|-------|----------------|
-| Insurance settlement mutates `invoice.paidAmount` directly instead of going through `recordPayment()` | `services/insuranceService.js` (`changeStatus`, SETTLED branch) | Bypasses the atomic payment path from #4, so a settlement racing a cash payment can lose one of them. Should call `recordPayment` with `method: 'INSURANCE'`. |
+| Item | Where | Status |
+|------|-------|--------|
+| Insurance settlement mutated `invoice.paidAmount` directly, bypassing the atomic payment path from #4 — a settlement racing a cash payment could overshoot the total. Now goes through `recordPayment()`, and the claim's status transition is atomic so two clerks can't both settle. | `services/insuranceService.js` | ✅ |
 
 ## 🟡 P2 — UX
 
