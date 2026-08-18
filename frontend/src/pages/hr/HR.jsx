@@ -240,7 +240,7 @@ function AttendanceTab() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-1 rounded-lg border border-border p-0.5">
           {[['day', 'Daily'], ['month', 'Monthly Summary']].map(([v, l]) => (
-            <button key={v} onClick={() => setView(v)} className={'rounded-md px-3 py-1.5 text-xs font-medium transition-colors ' + (view === v ? 'bg-fg text-bg' : 'text-muted hover:text-fg')}>{l}</button>
+            <button key={v} onClick={() => setView(v)} className={'rounded-md px-3 py-1.5 text-xs font-medium transition-colors ' + (view === v ? 'bg-accent text-accent-fg' : 'text-muted hover:text-fg')}>{l}</button>
           ))}
         </div>
         <Button variant="outline" onClick={onExport}><Download className="h-4 w-4" /> Export CSV</Button>

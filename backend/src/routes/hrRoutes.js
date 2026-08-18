@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import * as c from '../controllers/hrController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 import { validate } from '../middleware/validate.js';
-import { ROLES } from '../config/roles.js';
 import {
   createEmployeeSchema, updateEmployeeSchema, listEmployeesQuerySchema, exportEmployeesQuerySchema,
   markAttendanceSchema, markAttendanceBulkSchema, listAttendanceQuerySchema, exportAttendanceQuerySchema, monthlyAttendanceQuerySchema,
@@ -12,7 +12,7 @@ import {
 } from '../validators/hrValidator.js';
 
 const router = Router();
-router.use(authenticate, authorize(ROLES.ADMIN, ROLES.HR));
+router.use(authenticate, requirePermission('hr:view'), auditTrail('HR', { phi: true }));
 
 router.get('/employees', validate(listEmployeesQuerySchema, 'query'), c.listEmployees);
 router.get('/employees/active', c.activeEmployees);
@@ -21,7 +21,7 @@ router.get('/stats', c.stats);
 router.get('/employees/:id', c.getEmployee);
 router.post('/employees', validate(createEmployeeSchema), c.createEmployee);
 router.put('/employees/:id', validate(updateEmployeeSchema), c.updateEmployee);
-router.delete('/employees/:id', authorize(ROLES.ADMIN), c.deleteEmployee);
+router.delete('/employees/:id', requirePermission('hr:delete'), c.deleteEmployee);
 
 router.get('/attendance', validate(listAttendanceQuerySchema, 'query'), c.listAttendance);
 router.get('/attendance/export', validate(exportAttendanceQuerySchema, 'query'), c.exportAttendance);

@@ -45,6 +45,9 @@ const baseShape = {
   allergies: z.string().trim().max(1000).optional(),
   medicalHistory: z.string().trim().max(4000).optional(),
   insurances: insurancesSchema,
+  // Which price list this patient is billed under. Empty string clears it back
+  // to the house default.
+  tariffPlan: z.union([z.literal(''), z.string().regex(/^[0-9a-fA-F]{24}$/, 'Invalid tariff plan')]).nullable().optional(),
   status: z.enum(['ACTIVE', 'INACTIVE']).optional(),
 };
 

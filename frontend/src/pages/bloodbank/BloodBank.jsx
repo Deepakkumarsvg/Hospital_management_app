@@ -400,7 +400,16 @@ function Donors({ canManage, onChanged }) {
   const [form, setForm] = useState(EMPTY);
   const [deleting, setDeleting] = useState(null);
   const [saving, setSaving] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { setItems(await listDonors()); } catch (e) { toast.error(e.message); } finally { setLoading(false); } }, [toast]);
+  // Captured with the data rather than read during render. Eligibility is then
+  // shown "as of when this list was fetched", which is both what the reader
+  // assumes and a render that doesn't change every time it runs.
+  const [loadedAt, setLoadedAt] = useState(0);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setItems(await listDonors()); setLoadedAt(Date.now()); }
+    catch (e) { toast.error(e.message); }
+    finally { setLoading(false); }
+  }, [toast]);
   useEffect(() => { load(); }, [load]);
   const open = (d) => { setEditing(d); setForm(d ? { name: d.name, bloodGroup: d.bloodGroup, phone: d.phone || '', email: d.email || '', age: d.age || '', address: d.address || '' } : EMPTY); setFormOpen(true); };
   const submit = async (e) => {
@@ -446,8 +455,11 @@ function Donors({ canManage, onChanged }) {
       {filtered.length === 0 ? <EmptyState icon={Droplet} title="No donors" /> : (
         <div className="card overflow-x-auto"><table className="w-full min-w-[680px] text-sm">
           <thead><tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted"><th className="px-4 py-3 font-medium">Name</th><th className="px-4 py-3 font-medium">Group</th><th className="px-4 py-3 font-medium">Phone</th><th className="px-4 py-3 font-medium">Donations</th><th className="px-4 py-3 font-medium">Last Donation</th><th className="px-4 py-3 font-medium">Eligibility</th>{canManage && <th className="px-4 py-3 text-right font-medium">Actions</th>}</tr></thead>
+          {/* One reading of the clock for the whole table. Calling Date.now()
+              inside the map made every row's render depend on when it happened
+              to run, so two rows could disagree about what "today" is. */}
           <tbody>{filtered.map((d) => {
-            const daysLeft = d.nextEligibleDate ? Math.max(0, Math.ceil((new Date(d.nextEligibleDate) - Date.now()) / 86400000)) : 0;
+            const daysLeft = d.nextEligibleDate ? Math.max(0, Math.ceil((new Date(d.nextEligibleDate) - loadedAt) / 86400000)) : 0;
             return (
               <tr key={d.id || d._id} className="border-b border-border/60 last:border-0 hover:bg-surface">
                 <td className="px-4 py-3 font-medium">{d.name}</td>

@@ -1,8 +1,8 @@
 import { LabTest } from '../models/LabTest.js';
 import { LabOrder, LAB_TRANSITIONS } from '../models/LabOrder.js';
 import { Patient } from '../models/Patient.js';
-import { Doctor } from '../models/Doctor.js';
 import { ApiError } from '../utils/ApiError.js';
+import { buildSearchFilter } from './searchFilters.js';
 
 // ---------- Test master ----------
 export async function listTests({ search, category, status } = {}) {
@@ -47,30 +47,13 @@ const POPULATE = [
   { path: 'opdVisit', select: 'visitNo' },
 ];
 
-// Order number is searchable directly, but patient/doctor are refs — resolve
-// matching ids first so a name/UHID search actually finds orders.
-async function searchFilter(search) {
-  if (!search) return {};
-  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const [patients, doctors] = await Promise.all([
-    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
-    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
-  ]);
-  return {
-    $or: [
-      { orderNo: rx },
-      { patient: { $in: patients.map((p) => p._id) } },
-      { doctor: { $in: doctors.map((d) => d._id) } },
-    ],
-  };
-}
 
 export async function listOrders({ page, limit, search, status, patient, doctor }) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (patient) filter.patient = patient;
   if (doctor) filter.doctor = doctor;
-  Object.assign(filter, await searchFilter(search));
+  Object.assign(filter, await buildSearchFilter(search, ['orderNo'], { patient: true, doctor: true }));
 
   const [items, total] = await Promise.all([
     LabOrder.find(filter).populate(POPULATE).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -145,7 +128,7 @@ export async function labOrderRowsForExport({ search, status, patient, doctor })
   if (status && status !== 'ALL') filter.status = status;
   if (patient) filter.patient = patient;
   if (doctor) filter.doctor = doctor;
-  Object.assign(filter, await searchFilter(search));
+  Object.assign(filter, await buildSearchFilter(search, ['orderNo'], { patient: true, doctor: true }));
 
   const items = await LabOrder.find(filter).populate(POPULATE).sort({ createdAt: -1 });
 

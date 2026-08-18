@@ -1,20 +1,24 @@
 import { Router } from 'express';
 import * as c from '../controllers/reportController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
-import { ROLES } from '../config/roles.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, auditTrail('Report', { phi: true }));
 
-// Reports are for management roles.
-const MGMT = [ROLES.ADMIN, ROLES.ACCOUNTANT];
+// The dashboard is open to any signed-in member of staff: it is assembled
+// per-caller from only the sections their permissions allow, so gating the
+// whole endpoint would hide every card from everyone but management.
+router.get('/dashboard', c.dashboard);
 
-router.get('/summary', authorize(...MGMT), c.summary);
-router.get('/doctor-activity', authorize(...MGMT), c.doctorActivity);
-router.get('/export/summary', authorize(...MGMT), c.exportSummary);
-router.get('/export/summary/pdf', authorize(...MGMT), c.summaryPdf);
-router.get('/export/invoices', authorize(...MGMT), c.exportInvoices);
-router.get('/export/doctor-activity', authorize(...MGMT), c.exportDoctorActivity);
+// The reports proper are for management roles.
+
+router.get('/summary', requirePermission('reports:view'), c.summary);
+router.get('/doctor-activity', requirePermission('reports:view'), c.doctorActivity);
+router.get('/export/summary', requirePermission('reports:view'), c.exportSummary);
+router.get('/export/summary/pdf', requirePermission('reports:view'), c.summaryPdf);
+router.get('/export/invoices', requirePermission('reports:view'), c.exportInvoices);
+router.get('/export/doctor-activity', requirePermission('reports:view'), c.exportDoctorActivity);
 
 export default router;

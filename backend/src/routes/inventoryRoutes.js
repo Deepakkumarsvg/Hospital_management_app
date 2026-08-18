@@ -1,10 +1,10 @@
 import { Router } from 'express';
 import * as c from '../controllers/inventoryController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 import { validate } from '../middleware/validate.js';
 import { handleCsvUpload } from '../middleware/upload.js';
-import { ROLES } from '../config/roles.js';
 import {
   createItemSchema, updateItemSchema, adjustStockSchema,
   createVendorSchema, updateVendorSchema, createPoSchema, updatePoSchema, receivePoSchema,
@@ -13,43 +13,41 @@ import {
 } from '../validators/inventoryValidator.js';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, auditTrail('Inventory'));
 
-const CAN_VIEW = [ROLES.ADMIN, ROLES.STORE_MANAGER];
-const CAN_MANAGE = [ROLES.ADMIN, ROLES.STORE_MANAGER];
 
 // --- Items ---
-router.get('/items', authorize(...CAN_VIEW), validate(listItemsQuerySchema, 'query'), c.listItems);
-router.get('/items/active', authorize(...CAN_VIEW), c.activeItems);
-router.get('/items/export', authorize(...CAN_VIEW), validate(exportItemsQuerySchema, 'query'), c.exportItems);
-router.post('/items/import', authorize(...CAN_MANAGE), handleCsvUpload, c.importItems);
-router.get('/stats', authorize(...CAN_VIEW), c.stats);
-router.get('/items/:id/transactions', authorize(...CAN_VIEW), c.itemTransactions);
-router.get('/items/:id/batches', authorize(...CAN_VIEW), c.itemBatches);
-router.get('/items/:id/last-price', authorize(...CAN_VIEW), c.itemLastPrice);
-router.post('/items', authorize(...CAN_MANAGE), validate(createItemSchema), c.createItem);
-router.put('/items/:id', authorize(...CAN_MANAGE), validate(updateItemSchema), c.updateItem);
-router.delete('/items/:id', authorize(ROLES.ADMIN), c.deleteItem);
-router.post('/items/:id/adjust', authorize(...CAN_MANAGE), validate(adjustStockSchema), c.adjustStock);
+router.get('/items', requirePermission('inventory:view'), validate(listItemsQuerySchema, 'query'), c.listItems);
+router.get('/items/active', requirePermission('inventory:view'), c.activeItems);
+router.get('/items/export', requirePermission('inventory:view'), validate(exportItemsQuerySchema, 'query'), c.exportItems);
+router.post('/items/import', requirePermission('inventory:manage'), handleCsvUpload, c.importItems);
+router.get('/stats', requirePermission('inventory:view'), c.stats);
+router.get('/items/:id/transactions', requirePermission('inventory:view'), c.itemTransactions);
+router.get('/items/:id/batches', requirePermission('inventory:view'), c.itemBatches);
+router.get('/items/:id/last-price', requirePermission('inventory:view'), c.itemLastPrice);
+router.post('/items', requirePermission('inventory:manage'), validate(createItemSchema), c.createItem);
+router.put('/items/:id', requirePermission('inventory:manage'), validate(updateItemSchema), c.updateItem);
+router.delete('/items/:id', requirePermission('inventory:delete'), c.deleteItem);
+router.post('/items/:id/adjust', requirePermission('inventory:manage'), validate(adjustStockSchema), c.adjustStock);
 
 // --- Vendors ---
-router.get('/vendors', authorize(...CAN_VIEW), c.listVendors);
-router.get('/vendors/active', authorize(...CAN_VIEW), c.activeVendors);
-router.get('/vendors/export', authorize(...CAN_VIEW), validate(exportVendorsQuerySchema, 'query'), c.exportVendors);
-router.post('/vendors', authorize(...CAN_MANAGE), validate(createVendorSchema), c.createVendor);
-router.put('/vendors/:id', authorize(...CAN_MANAGE), validate(updateVendorSchema), c.updateVendor);
-router.get('/vendors/:id', authorize(...CAN_VIEW), c.getVendor);
-router.delete('/vendors/:id', authorize(ROLES.ADMIN), c.deleteVendor);
+router.get('/vendors', requirePermission('inventory:view'), c.listVendors);
+router.get('/vendors/active', requirePermission('inventory:view'), c.activeVendors);
+router.get('/vendors/export', requirePermission('inventory:view'), validate(exportVendorsQuerySchema, 'query'), c.exportVendors);
+router.post('/vendors', requirePermission('inventory:manage'), validate(createVendorSchema), c.createVendor);
+router.put('/vendors/:id', requirePermission('inventory:manage'), validate(updateVendorSchema), c.updateVendor);
+router.get('/vendors/:id', requirePermission('inventory:view'), c.getVendor);
+router.delete('/vendors/:id', requirePermission('inventory:delete'), c.deleteVendor);
 
 // --- Purchase orders ---
-router.get('/purchase-orders', authorize(...CAN_VIEW), validate(listPoQuerySchema, 'query'), c.listPurchaseOrders);
-router.get('/purchase-orders/export', authorize(...CAN_VIEW), validate(exportPoQuerySchema, 'query'), c.exportPurchaseOrders);
-router.get('/purchase-orders/:id', authorize(...CAN_VIEW), c.getPurchaseOrder);
-router.get('/purchase-orders/:id/pdf', authorize(...CAN_VIEW), c.purchaseOrderPdf);
-router.post('/purchase-orders', authorize(...CAN_MANAGE), validate(createPoSchema), c.createPurchaseOrder);
-router.put('/purchase-orders/:id', authorize(...CAN_MANAGE), validate(updatePoSchema), c.updatePurchaseOrder);
-router.patch('/purchase-orders/:id/place', authorize(...CAN_MANAGE), c.placeOrder);
-router.patch('/purchase-orders/:id/receive', authorize(...CAN_MANAGE), validate(receivePoSchema), c.receivePurchaseOrder);
-router.patch('/purchase-orders/:id/cancel', authorize(...CAN_MANAGE), c.cancelPurchaseOrder);
+router.get('/purchase-orders', requirePermission('inventory:view'), validate(listPoQuerySchema, 'query'), c.listPurchaseOrders);
+router.get('/purchase-orders/export', requirePermission('inventory:view'), validate(exportPoQuerySchema, 'query'), c.exportPurchaseOrders);
+router.get('/purchase-orders/:id', requirePermission('inventory:view'), c.getPurchaseOrder);
+router.get('/purchase-orders/:id/pdf', requirePermission('inventory:view'), c.purchaseOrderPdf);
+router.post('/purchase-orders', requirePermission('inventory:manage'), validate(createPoSchema), c.createPurchaseOrder);
+router.put('/purchase-orders/:id', requirePermission('inventory:manage'), validate(updatePoSchema), c.updatePurchaseOrder);
+router.patch('/purchase-orders/:id/place', requirePermission('inventory:manage'), c.placeOrder);
+router.patch('/purchase-orders/:id/receive', requirePermission('inventory:manage'), validate(receivePoSchema), c.receivePurchaseOrder);
+router.patch('/purchase-orders/:id/cancel', requirePermission('inventory:manage'), c.cancelPurchaseOrder);
 
 export default router;

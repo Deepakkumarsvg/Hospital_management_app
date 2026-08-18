@@ -17,7 +17,11 @@ const settingSchema = new mongoose.Schema(
     email: { type: String, trim: true, lowercase: true, default: 'info@hospital.example' },
     website: { type: String, trim: true, default: '' },
     registrationNo: { type: String, trim: true, default: '' },
-    gstin: { type: String, trim: true, default: '' },
+    gstin: { type: String, trim: true, uppercase: true, default: '' },
+    // Two-digit GST state code. Decides whether tax on a bill splits CGST/SGST
+    // (same state) or goes to IGST — see config/gst.js. Derived from the GSTIN
+    // when blank, since its first two digits ARE the state code.
+    stateCode: { type: String, trim: true, default: '' },
     currency: { type: String, trim: true, default: '₹' },
     defaultTaxPercent: { type: Number, min: 0, max: 100, default: 0 },
     invoiceFooter: { type: String, trim: true, default: 'Thank you for choosing us. Get well soon!' },

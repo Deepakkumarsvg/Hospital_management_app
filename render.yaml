@@ -75,3 +75,28 @@ services:
 
       - key: JWT_EXPIRES_IN
         value: 1d
+
+      # --- Error tracking ---
+      #
+      # The self-hosted half needs no configuration: 5xx responses, browser
+      # crashes and slow requests are grouped into each hospital's ErrorLog
+      # collection and read at /errors in the app, or with `npm run errors`
+      # from a working copy. These only tune it.
+      - key: ERROR_RETENTION_DAYS
+        value: "30"
+      - key: SLOW_REQUEST_MS
+        value: "3000"
+
+      # Sentry is the optional other half — alerting, and reports that still
+      # arrive when the process is too broken to reach MongoDB. Prompted rather
+      # than stored because the DSN identifies your Sentry project.
+      #
+      # This covers the SERVER only. The browser half is compiled in, so it
+      # needs VITE_SENTRY_DSN passed as a Docker build argument instead — see
+      # docs/ERROR_TRACKING.md.
+      - key: SENTRY_DSN
+        sync: false
+
+      # RENDER_GIT_COMMIT is injected by Render, and config/release.js reads it
+      # on its own — so every error is stamped with the build it came from with
+      # nothing configured here.

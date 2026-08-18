@@ -1,9 +1,9 @@
 import { RadiologyTest } from '../models/RadiologyTest.js';
 import { RadiologyOrder, RAD_TRANSITIONS } from '../models/RadiologyOrder.js';
 import { Patient } from '../models/Patient.js';
-import { Doctor } from '../models/Doctor.js';
 import { ApiError } from '../utils/ApiError.js';
 import { notify } from './notificationService.js';
+import { buildSearchFilter } from './searchFilters.js';
 
 // ---------- Test master ----------
 export async function listTests({ search, modality, status } = {}) {
@@ -48,23 +48,11 @@ const POPULATE = [
   { path: 'opdVisit', select: 'visitNo' },
 ];
 
-// Order number is searchable directly, but patient/doctor are refs — resolve
-// matching ids first so a name/UHID search actually finds orders.
-async function searchFilter(search) {
-  if (!search) return {};
-  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const [patients, doctors] = await Promise.all([
-    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
-    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
-  ]);
-  return {
-    $or: [
-      { orderNo: rx },
-      { patient: { $in: patients.map((p) => p._id) } },
-      { doctor: { $in: doctors.map((d) => d._id) } },
-    ],
-  };
-}
+// Order number is searchable directly, but patient/doctor are refs — the
+// shared helper resolves those, with a cap so a broad term cannot pull the
+// whole patient list into memory. See services/searchFilters.js.
+const searchFilter = (search) =>
+  buildSearchFilter(search, ['orderNo'], { patient: true, doctor: true });
 
 export async function listOrders({ page, limit, search, status, patient, doctor }) {
   const filter = {};

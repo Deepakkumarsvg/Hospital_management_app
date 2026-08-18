@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { register } from "../db/registry.js";
 import { tenantModel } from "../db/tenantModel.js";
 import { Counter } from './Counter.js';
+import { encryptedText } from '../utils/encryption.js';
 
 export const GENDERS = ['MALE', 'FEMALE', 'OTHER'];
 export const BLOOD_GROUPS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'UNKNOWN'];
@@ -46,14 +47,20 @@ const patientSchema = new mongoose.Schema(
     bloodGroup: { type: String, enum: BLOOD_GROUPS, default: 'UNKNOWN' },
     address: { type: addressSchema, default: () => ({}) },
     emergencyContact: { type: emergencyContactSchema, default: () => ({}) },
-    allergies: { type: String, trim: true, default: '' },
-    medicalHistory: { type: String, trim: true, default: '' },
+    // Encrypted at rest when PHI_ENCRYPTION_KEY is set — free-text clinical
+    // content that nothing queries on. See utils/encryption.js for why the
+    // searchable identifiers above deliberately are not.
+    allergies: encryptedText(),
+    medicalHistory: encryptedText(),
     // A patient may carry more than one policy (e.g. employer + personal cover).
     insurances: { type: [insuranceSchema], default: () => [] },
+    // The price list this patient is billed under — CGHS, a corporate contract,
+    // a TPA panel. Blank means the house default. See services/tariffService.js.
+    tariffPlan: { type: mongoose.Schema.Types.ObjectId, ref: 'TariffPlan', default: null, index: true },
     status: { type: String, enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  { timestamps: true, toJSON: { virtuals: true, getters: true }, toObject: { virtuals: true, getters: true } }
 );
 
 // Convenience virtuals.

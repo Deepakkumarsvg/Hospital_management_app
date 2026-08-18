@@ -4,6 +4,7 @@ import { Invoice } from '../models/Invoice.js';
 import { recordPayment } from './billingService.js';
 import { Patient } from '../models/Patient.js';
 import { ApiError } from '../utils/ApiError.js';
+import { toRupees } from '../utils/money.js';
 import { removeObject } from '../config/storage.js';
 
 const POPULATE = [
@@ -32,14 +33,35 @@ export async function getClaim(id) {
   return claim;
 }
 
+// The policy to fall back on when a claim doesn't name one: prefer a policy
+// from the same insurer the claim is being filed with, and among the rest
+// prefer one that is still in date. A patient may carry several (employer +
+// personal cover), so picking the first one blindly would file the claim
+// against the wrong policy number.
+function preferredPolicy(insurances = [], insuranceCompany = '') {
+  const inDate = (p) => !p.validTill || new Date(p.validTill) >= new Date();
+  const company = String(insuranceCompany || '').trim().toLowerCase();
+  const sameInsurer = (p) => company && String(p.provider || '').trim().toLowerCase() === company;
+
+  return insurances.find((p) => sameInsurer(p) && inDate(p))
+    || insurances.find((p) => sameInsurer(p))
+    || insurances.find(inDate)
+    || insurances[0]
+    || null;
+}
+
 export async function createClaim(data, userId) {
-  const patient = await Patient.findById(data.patient).select('insurance');
+  // `insurances` is an array — the singular `insurance` this used to read was
+  // removed by migrateInsurance.js, so the fallback silently never fired.
+  const patient = await Patient.findById(data.patient).select('insurances');
   if (!patient) throw ApiError.badRequest('Patient does not exist', 'PATIENT_NOT_FOUND');
 
   const claim = new InsuranceClaim({
     ...data,
     // Fall back to the patient's stored policy if not provided.
-    policyNumber: data.policyNumber || patient.insurance?.policyNumber || '',
+    policyNumber: data.policyNumber
+      || preferredPolicy(patient.insurances, data.insuranceCompany)?.policyNumber
+      || '',
     status: 'DRAFT',
     history: [{ status: 'DRAFT', by: userId }],
     createdBy: userId,
@@ -72,7 +94,8 @@ export async function changeStatus(id, { status, approvedAmount, note }, userId)
     if (approvedAmount === undefined) throw ApiError.badRequest('Approved amount is required', 'APPROVED_AMOUNT_REQUIRED');
     if (approvedAmount > claim.claimAmount) throw ApiError.badRequest('Approved amount cannot exceed claim amount', 'APPROVED_EXCEEDS_CLAIM');
     changes.approvedAmount = approvedAmount;
-    changes.rejectedAmount = Math.round((claim.claimAmount - approvedAmount) * 100) / 100;
+    // Both sides are integer paise, so this is exact — no rounding needed.
+    changes.rejectedAmount = claim.claimAmount - approvedAmount;
   }
   if (status === 'REJECTED') {
     changes.approvedAmount = 0;
@@ -113,15 +136,35 @@ export async function changeStatus(id, { status, approvedAmount, note }, userId)
     if (invoice && !['CANCELLED', 'REFUNDED'].includes(invoice.status)) {
       const pay = Math.min(updated.approvedAmount, invoice.dueAmount);
       if (pay > 0) {
-        await recordPayment(
-          updated.invoice,
-          { amount: pay, method: 'INSURANCE', transactionId: updated.claimNo, note: 'Insurance settlement' },
-          userId
-        ).catch((err) => {
-          // The claim is settled either way; a payment that was already
-          // recorded is the expected outcome of a retry, not a failure.
-          if (err?.errorCode !== 'PAYMENT_ALREADY_RECORDED') throw err;
-        });
+        try {
+          await recordPayment(
+            updated.invoice,
+            { amount: pay, method: 'INSURANCE', transactionId: updated.claimNo, note: 'Insurance settlement' },
+            userId
+          );
+        } catch (err) {
+          // A payment that was already recorded is the expected outcome of a
+          // retry, not a failure — the money is banked, the claim is settled.
+          if (err?.errorCode !== 'PAYMENT_ALREADY_RECORDED') {
+            // Anything else means the settlement did NOT move any money. A
+            // claim left marked SETTLED would be a lie the ledger can't back
+            // up, so put it back the way it was and surface the real reason.
+            await InsuranceClaim.updateOne(
+              { _id: id, status: 'SETTLED' },
+              {
+                $set: { status: from },
+                $push: {
+                  history: {
+                    status: from,
+                    by: userId,
+                    note: `Settlement reversed — payment failed: ${err?.message || 'unknown error'}`,
+                  },
+                },
+              }
+            ).catch(() => {});
+            throw err;
+          }
+        }
       }
     }
   }
@@ -170,5 +213,12 @@ export async function insuranceStats() {
     InsuranceClaim.countDocuments({ status: { $in: ['SUBMITTED', 'UNDER_REVIEW'] } }),
     InsuranceClaim.countDocuments({ status: 'SETTLED' }),
   ]);
-  return { claimed: agg.claimed, approved: agg.approved, rejected: agg.rejected, pending, settled };
+  // Aggregation bypasses the schema's toJSON — convert the paise here.
+  return {
+    claimed: toRupees(agg.claimed),
+    approved: toRupees(agg.approved),
+    rejected: toRupees(agg.rejected),
+    pending,
+    settled,
+  };
 }

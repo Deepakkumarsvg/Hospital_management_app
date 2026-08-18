@@ -1,4 +1,7 @@
 import api from './api.js';
+// Everything the dashboard needs in one request — see reportController.js.
+export const getDashboard = () => api.get('/reports/dashboard').then((res) => res.data.data);
+
 import { downloadFile, openPdf } from '../utils/download.js';
 
 export async function getReportSummary(params = {}) {

@@ -5,7 +5,17 @@ import { Patient } from '../models/Patient.js';
 import { LabOrder } from '../models/LabOrder.js';
 import { RadiologyOrder } from '../models/RadiologyOrder.js';
 import { MedicineDispense } from '../models/MedicineDispense.js';
+import { Surgery } from '../models/Surgery.js';
+import { BloodUnit } from '../models/BloodUnit.js';
+import { AmbulanceTrip } from '../models/AmbulanceTrip.js';
+import { OPDVisit } from '../models/OPDVisit.js';
 import { ApiError } from '../utils/ApiError.js';
+import { toRupees, toPaise } from '../utils/money.js';
+import { unbilledBedCharges } from './bedCharges.js';
+import { buildSearchFilter } from './searchFilters.js';
+import { priceResolver } from './tariffService.js';
+import { getSettings } from './settingService.js';
+import { taxTreatmentForLine, stateCodeOfGstin } from '../config/gst.js';
 
 const POPULATE = [
   { path: 'patient', select: 'uhid firstName lastName phone' },
@@ -16,12 +26,8 @@ export async function listInvoices({ page, limit, search, status, patient }) {
   const filter = {};
   if (status && status !== 'ALL') filter.status = status;
   if (patient) filter.patient = patient;
-  if (search) {
-    const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    // Match on invoice number directly, or on the billed patient's name/UHID.
-    const matchingPatients = await Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id');
-    filter.$or = [{ invoiceNo: rx }, { patient: { $in: matchingPatients.map((p) => p._id) } }];
-  }
+  // Match on invoice number directly, or on the billed patient's name/UHID.
+  Object.assign(filter, await buildSearchFilter(search, ['invoiceNo'], { patient: true }));
 
   const [items, total] = await Promise.all([
     Invoice.find(filter).populate(POPULATE).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -37,15 +43,64 @@ export async function getInvoice(id) {
   return { invoice, payments };
 }
 
+// Every amount reaching this service is already paise — the validators convert
+// at the HTTP boundary (see utils/money.js), and internal callers work in paise
+// throughout. Nothing below multiplies or divides by 100.
+//
+// GST fields are filled in from the line's category when the caller hasn't
+// stated them, so an ordinary bill needs no tax data entry at all and a line
+// that genuinely differs can still say so. See config/gst.js.
+const toStoredItems = (items = []) => items.map((it) => {
+  const quantity = it.quantity || 1;
+  const unitPrice = it.unitPrice || 0;
+  const defaults = taxTreatmentForLine({ category: it.category, unitPrice });
+
+  return {
+    ...it,
+    quantity,
+    hsnSac: it.hsnSac ?? defaults.hsnSac,
+    taxTreatment: it.taxTreatment ?? defaults.treatment,
+    taxRatePercent: it.taxRatePercent ?? defaults.rate,
+  };
+});
+
+// Where the supply happens, and therefore whether the tax splits CGST/SGST or
+// goes to IGST.
+//
+// Almost every hospital bill is to somebody standing in the building, so the
+// default is the hospital's own state. It only differs when a bill is raised to
+// an out-of-state company or TPA, which announces itself through the GSTIN the
+// caller supplies.
+async function resolveSupply({ placeOfSupply, customerGstin }) {
+  const settings = await getSettings().catch(() => null);
+  const homeState = settings?.stateCode || stateCodeOfGstin(settings?.gstin) || '';
+
+  const place = placeOfSupply
+    || stateCodeOfGstin(customerGstin)
+    || homeState;
+
+  return {
+    placeOfSupply: place,
+    // Unknown on either side is treated as intra-state: CGST/SGST is the
+    // overwhelmingly common case, and guessing inter-state would put the tax
+    // under a head the hospital never collected.
+    isInterState: Boolean(place && homeState && place !== homeState),
+  };
+}
+
 export async function createInvoice(data, userId) {
   const patient = await Patient.findById(data.patient).select('_id');
   if (!patient) throw ApiError.badRequest('Patient does not exist', 'PATIENT_NOT_FOUND');
 
+  const supply = await resolveSupply(data);
+
   const invoice = new Invoice({
     patient: data.patient,
-    items: data.items.map((it) => ({ ...it, quantity: it.quantity || 1 })),
+    items: toStoredItems(data.items),
     discount: data.discount || 0,
     taxPercent: data.taxPercent || 0,
+    customerGstin: data.customerGstin || '',
+    ...supply,
     notes: data.notes || '',
     createdBy: userId,
   });
@@ -72,7 +127,7 @@ export async function updateInvoice(id, data) {
     }
   }
 
-  if (data.items) invoice.items = data.items.map((it) => ({ ...it, quantity: it.quantity || 1 }));
+  if (data.items) invoice.items = toStoredItems(data.items);
   if (data.discount !== undefined) invoice.discount = data.discount;
   if (data.taxPercent !== undefined) invoice.taxPercent = data.taxPercent;
   if (data.notes !== undefined) invoice.notes = data.notes;
@@ -133,15 +188,14 @@ export async function refundInvoice(id, { amount, method, reason }, userId) {
     {
       _id: id,
       status: { $ne: 'CANCELLED' },
-      $expr: { $lte: [amount, { $add: ['$paidAmount', EPSILON] }] },
-      paidAmount: { $gt: 0 },
+      paidAmount: { $gte: amount, $gt: 0 },
     },
     [
-      { $set: { paidAmount: { $max: [0, { $round: [{ $subtract: ['$paidAmount', amount] }, 2] }] } } },
+      { $set: { paidAmount: { $subtract: ['$paidAmount', amount] } } },
       DERIVE_TOTALS_STAGE,
       // A refund that empties the invoice closes it as REFUNDED rather than
       // dropping back to PENDING — the money went out, it isn't owed again.
-      { $set: { status: { $cond: [{ $lte: ['$paidAmount', EPSILON] }, 'REFUNDED', '$status'] } } },
+      { $set: { status: { $cond: [{ $lte: ['$paidAmount', 0] }, 'REFUNDED', '$status'] } } },
     ],
     { new: true }
   );
@@ -151,7 +205,7 @@ export async function refundInvoice(id, { amount, method, reason }, userId) {
     if (!existing) throw ApiError.notFound('Invoice not found', 'INVOICE_NOT_FOUND');
     if (existing.status === 'CANCELLED') throw ApiError.badRequest('Cannot refund a cancelled invoice', 'INVOICE_CANCELLED');
     if (existing.paidAmount <= 0) throw ApiError.badRequest('Nothing has been paid on this invoice', 'NOTHING_PAID');
-    throw ApiError.badRequest(`Refund cannot exceed the amount paid (₹${existing.paidAmount})`, 'REFUND_EXCEEDS_PAID');
+    throw ApiError.badRequest(`Refund cannot exceed the amount paid (₹${toRupees(existing.paidAmount)})`, 'REFUND_EXCEEDS_PAID');
   }
 
   try {
@@ -164,27 +218,28 @@ export async function refundInvoice(id, { amount, method, reason }, userId) {
     return { invoice: await invoice.populate(POPULATE), payment };
   } catch (err) {
     await Invoice.findByIdAndUpdate(id, [
-      { $set: { paidAmount: { $round: [{ $add: ['$paidAmount', amount] }, 2] } } },
+      { $set: { paidAmount: { $add: ['$paidAmount', amount] } } },
       DERIVE_TOTALS_STAGE,
     ]).catch(() => {});
     throw err;
   }
 }
 
-// Money comparisons carry float noise, so "equal" means "within half a paisa".
-const EPSILON = 0.005;
-
 // Re-derive dueAmount and status from whatever paidAmount ends up being. Runs
 // as a stage of the same update pipeline as the paidAmount change, so the
 // invoice is never observable in a state where the three disagree.
+//
+// Every amount is an integer number of paise, so these are exact comparisons.
+// This used to need an EPSILON of half a paisa and a $round on every result,
+// because float arithmetic made "paid equals total" a question of degree.
 const DERIVE_TOTALS_STAGE = {
   $set: {
-    dueAmount: { $round: [{ $subtract: ['$grandTotal', '$paidAmount'] }, 2] },
+    dueAmount: { $subtract: ['$grandTotal', '$paidAmount'] },
     status: {
       $switch: {
         branches: [
-          { case: { $lte: ['$paidAmount', EPSILON] }, then: 'PENDING' },
-          { case: { $lt: ['$paidAmount', { $subtract: ['$grandTotal', EPSILON] }] }, then: 'PARTIAL' },
+          { case: { $lte: ['$paidAmount', 0] }, then: 'PENDING' },
+          { case: { $lt: ['$paidAmount', '$grandTotal'] }, then: 'PARTIAL' },
         ],
         default: 'PAID',
       },
@@ -199,15 +254,17 @@ const DERIVE_TOTALS_STAGE = {
 // would let two concurrent payments each see the full amount outstanding and
 // both go through.
 export async function recordPayment(invoiceId, data, userId) {
+  const { amount } = data;
+
   const invoice = await Invoice.findOneAndUpdate(
     {
       _id: invoiceId,
       status: { $nin: ['REFUNDED', 'CANCELLED'] },
       // paidAmount + amount must not exceed the grand total.
-      $expr: { $lte: [{ $add: ['$paidAmount', data.amount] }, { $add: ['$grandTotal', EPSILON] }] },
+      $expr: { $lte: [{ $add: ['$paidAmount', amount] }, '$grandTotal'] },
     },
     [
-      { $set: { paidAmount: { $round: [{ $add: ['$paidAmount', data.amount] }, 2] } } },
+      { $set: { paidAmount: { $add: ['$paidAmount', amount] } } },
       DERIVE_TOTALS_STAGE,
     ],
     { new: true }
@@ -220,13 +277,13 @@ export async function recordPayment(invoiceId, data, userId) {
     if (['REFUNDED', 'CANCELLED'].includes(existing.status)) {
       throw ApiError.badRequest(`Cannot pay a ${existing.status.toLowerCase()} invoice`, 'INVOICE_LOCKED');
     }
-    throw ApiError.badRequest(`Amount exceeds due (₹${existing.dueAmount})`, 'OVERPAYMENT');
+    throw ApiError.badRequest(`Amount exceeds due (₹${toRupees(existing.dueAmount)})`, 'OVERPAYMENT');
   }
 
   try {
     const payment = await Payment.create({
       invoice: invoice._id, patient: invoice.patient,
-      amount: data.amount, method: data.method || 'CASH',
+      amount, method: data.method || 'CASH',
       transactionId: data.transactionId || '', note: data.note || '', receivedBy: userId,
     });
     return { invoice: await invoice.populate(POPULATE), payment };
@@ -234,7 +291,7 @@ export async function recordPayment(invoiceId, data, userId) {
     // The receipt is what makes the payment auditable. If it can't be written,
     // the invoice must not claim the money was received.
     await Invoice.findByIdAndUpdate(invoiceId, [
-      { $set: { paidAmount: { $round: [{ $subtract: ['$paidAmount', data.amount] }, 2] } } },
+      { $set: { paidAmount: { $subtract: ['$paidAmount', amount] } } },
       DERIVE_TOTALS_STAGE,
     ]).catch(() => {});
 
@@ -252,37 +309,103 @@ export async function recordPayment(invoiceId, data, userId) {
   }
 }
 
-// Suggested billable lines drawn from the patient's diagnostics & pharmacy —
-// excludes anything already billed on a non-cancelled invoice, so re-opening
-// "Add suggested charges" can't double-bill the same lab order/dispense.
+// Suggested billable lines drawn from everywhere in the hospital that earns
+// money on a patient's behalf — diagnostics, pharmacy, the bed they slept in,
+// theatre time, blood, ambulance trips and the consultation itself.
+//
+// Anything already billed on a non-cancelled invoice is excluded, so re-opening
+// "Add suggested charges" can never bill the same thing twice. Most sources are
+// matched on the source document's id; bed nights are matched on a finer key
+// because a stay is billed a night at a time.
+//
+// Amounts here are RUPEES: they are read from catalogue/operational models that
+// are not paise-denominated, and they go back out to the client, which posts
+// them to createInvoice through the validators that do the conversion.
 export async function billingSuggestions(patientId) {
-  const [labs, rads, dispenses, billedRows] = await Promise.all([
+  const [labs, rads, dispenses, surgeries, bloodUnits, trips, visits, billedRows] = await Promise.all([
     LabOrder.find({ patient: patientId, status: { $ne: 'CANCELLED' } }),
     RadiologyOrder.find({ patient: patientId, status: { $ne: 'CANCELLED' } }),
     MedicineDispense.find({ patient: patientId }),
+    Surgery.find({ patient: patientId, status: 'COMPLETED' }).populate('theatre', 'name'),
+    BloodUnit.find({ issuedTo: patientId, status: 'ISSUED' }),
+    AmbulanceTrip.find({ patient: patientId, status: 'COMPLETED' }),
+    OPDVisit.find({ patient: patientId, status: { $ne: 'CANCELLED' } })
+      .populate('doctor', 'firstName lastName consultationFee'),
     Invoice.aggregate([
       { $match: { patient: new mongoose.Types.ObjectId(patientId), status: { $ne: 'CANCELLED' } } },
       { $unwind: '$items' },
-      { $match: { 'items.sourceId': { $ne: null } } },
-      { $group: { _id: null, ids: { $addToSet: '$items.sourceId' } } },
+      {
+        $group: {
+          _id: null,
+          ids: { $addToSet: '$items.sourceId' },
+          keys: { $addToSet: '$items.sourceKey' },
+        },
+      },
     ]),
   ]);
-  const billed = new Set((billedRows[0]?.ids || []).map(String));
+
+  const billed = new Set((billedRows[0]?.ids || []).filter(Boolean).map(String));
+  const billedKeys = new Set((billedRows[0]?.keys || []).filter(Boolean));
+
+  // What this patient's payer actually pays. Applied only where the price is
+  // looked up from a catalogue AT BILLING TIME — a lab test, an X-ray, a
+  // consultation, a bed. Amounts already transacted at the counter (a dispense
+  // total, the charge entered when blood was issued, an ambulance fare) are
+  // records of what happened, not prices to re-derive, and re-pricing them here
+  // would make the bill disagree with the receipt the patient already has.
+  //
+  // Rates are stored in paise; these suggestions are in rupees, because the
+  // catalogues they come from are. See utils/money.js.
+  const priced = await priceResolver(patientId);
+  const atTariff = (serviceType, serviceId, catalogRupees) =>
+    toRupees(priced(serviceType, serviceId, toPaise(catalogRupees)));
 
   const suggestions = [];
+  const add = (line) => { if (line.unitPrice > 0) suggestions.push(line); };
+
   for (const l of labs) {
     if (billed.has(String(l._id))) continue;
-    const amt = (l.items || []).reduce((s, i) => s + (i.price || 0), 0);
-    if (amt > 0) suggestions.push({ category: 'LABORATORY', description: `Lab · ${l.orderNo}`, quantity: 1, unitPrice: amt, sourceType: 'LAB_ORDER', sourceId: l._id });
+    const amt = (l.items || []).reduce(
+      (sum, i) => sum + (i.test ? atTariff('LAB_TEST', i.test, i.price || 0) : (i.price || 0)),
+      0
+    );
+    add({ category: 'LABORATORY', description: `Lab · ${l.orderNo}`, quantity: 1, unitPrice: amt, sourceType: 'LAB_ORDER', sourceId: l._id });
   }
   for (const r of rads) {
     if (billed.has(String(r._id))) continue;
-    if (r.price > 0) suggestions.push({ category: 'RADIOLOGY', description: `${r.testName} · ${r.orderNo}`, quantity: 1, unitPrice: r.price, sourceType: 'RAD_ORDER', sourceId: r._id });
+    const price = r.test ? atTariff('RAD_TEST', r.test, r.price) : r.price;
+    add({ category: 'RADIOLOGY', description: `${r.testName} · ${r.orderNo}`, quantity: 1, unitPrice: price, sourceType: 'RAD_ORDER', sourceId: r._id });
   }
   for (const d of dispenses) {
     if (billed.has(String(d._id))) continue;
-    if (d.total > 0) suggestions.push({ category: 'MEDICINE', description: `Pharmacy · ${d.dispenseNo}`, quantity: 1, unitPrice: d.total, sourceType: 'DISPENSE', sourceId: d._id });
+    add({ category: 'MEDICINE', description: `Pharmacy · ${d.dispenseNo}`, quantity: 1, unitPrice: d.total, sourceType: 'DISPENSE', sourceId: d._id });
   }
+  for (const s of surgeries) {
+    if (billed.has(String(s._id))) continue;
+    const theatre = s.theatre?.name ? ` · ${s.theatre.name}` : '';
+    add({ category: 'SURGERY', description: `${s.procedure}${theatre} · ${s.surgeryNo}`, quantity: 1, unitPrice: s.charges, sourceType: 'SURGERY', sourceId: s._id });
+  }
+  for (const u of bloodUnits) {
+    if (billed.has(String(u._id))) continue;
+    add({ category: 'PROCEDURE', description: `Blood · ${u.bloodGroup} ${u.component} · ${u.unitNo}`, quantity: 1, unitPrice: u.chargeAmount, sourceType: 'BLOOD_UNIT', sourceId: u._id });
+  }
+  for (const t of trips) {
+    if (billed.has(String(t._id))) continue;
+    add({ category: 'OTHER', description: `Ambulance · ${t.tripNo}`, quantity: 1, unitPrice: t.charges, sourceType: 'AMBULANCE_TRIP', sourceId: t._id });
+  }
+  for (const v of visits) {
+    if (billed.has(String(v._id))) continue;
+    const doctor = v.doctor ? `Dr. ${[v.doctor.firstName, v.doctor.lastName].filter(Boolean).join(' ')}` : 'Consultation';
+    const fee = v.doctor
+      ? atTariff('CONSULTATION', v.doctor._id, v.doctor.consultationFee || 0)
+      : 0;
+    add({ category: 'CONSULTATION', description: `${doctor} · ${v.visitNo}`, quantity: 1, unitPrice: fee, sourceType: 'OPD_CONSULT', sourceId: v._id });
+  }
+
+  // Bed nights come last so the bill reads procedures-then-stay, and are the
+  // one source keyed per night rather than per document.
+  suggestions.push(...await unbilledBedCharges(patientId, billedKeys, atTariff));
+
   return suggestions;
 }
 
@@ -293,5 +416,12 @@ export async function billingStats() {
   ]);
   const agg = rows[0] || { billed: 0, collected: 0, due: 0 };
   const pending = await Invoice.countDocuments({ status: { $in: ['PENDING', 'PARTIAL'] } });
-  return { billed: agg.billed, collected: agg.collected, due: agg.due, pendingInvoices: pending };
+  // Aggregation results never pass through a schema, so the paise-to-rupees
+  // conversion that toJSON does for documents has to happen by hand here.
+  return {
+    billed: toRupees(agg.billed),
+    collected: toRupees(agg.collected),
+    due: toRupees(agg.due),
+    pendingInvoices: pending,
+  };
 }

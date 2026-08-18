@@ -17,7 +17,7 @@ import {
   listAmbulances, createAmbulance, updateAmbulance, deleteAmbulance,
   listTrips, startTrip, updateTrip, endTrip, exportTrips, downloadTripReceiptPdf, getAmbulanceStats,
 } from '../../services/ambulanceService.js';
-import { CAN_AMBULANCE_MANAGE, CAN_MANAGE_ADMIN, AMBULANCE_STATUS_META, TRIP_STATUS_META, money, formatDateTime } from '../../utils/constants.js';
+import { CAN_AMBULANCE_MANAGE, CAN_MANAGE_ADMIN, AMBULANCE_STATUS_META, TRIP_STATUS_META, money } from '../../utils/constants.js';
 
 const TYPE_OPTIONS = ['BASIC', 'ADVANCED', 'ICU'].map((v) => ({ value: v, label: v }));
 const STATUS_OPTIONS = [

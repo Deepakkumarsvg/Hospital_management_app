@@ -34,7 +34,10 @@ export async function createOrder(invoiceId) {
     throw ApiError.badRequest(`Cannot pay a ${invoice.status.toLowerCase()} invoice`, 'INVOICE_LOCKED');
   }
 
-  const amountPaise = Math.round(invoice.dueAmount * 100);
+  // dueAmount is already stored in paise, which is also the unit Razorpay
+  // works in — the conversion that used to live here would now multiply by a
+  // hundred twice over. See utils/money.js.
+  const amountPaise = invoice.dueAmount;
 
   if (isLive) {
     const order = await getClient().orders.create({
@@ -67,7 +70,8 @@ export async function verifyAndCapture(invoiceId, { orderId, paymentId, signatur
   return { ...result, mode: isLive ? 'razorpay' : 'mock' };
 }
 
-// Bank a gateway payment exactly once.
+// Bank a gateway payment exactly once. `amount` is paise, like everything else
+// behind the HTTP boundary.
 //
 // The same payment reaches us twice as a matter of course — the browser
 // returns from checkout at roughly the moment Razorpay posts its webhook.

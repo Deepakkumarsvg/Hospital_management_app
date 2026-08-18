@@ -1,8 +1,7 @@
+import { buildSearchFilter } from './searchFilters.js';
 import { Medicine } from '../models/Medicine.js';
 import { MedicineBatch } from '../models/MedicineBatch.js';
 import { MedicineDispense } from '../models/MedicineDispense.js';
-import { Patient } from '../models/Patient.js';
-import { Doctor } from '../models/Doctor.js';
 import { ApiError } from '../utils/ApiError.js';
 import { notify } from './notificationService.js';
 
@@ -201,23 +200,11 @@ const DISPENSE_POPULATE = [
   { path: 'dispensedBy', select: 'name' },
 ];
 
-// Dispense no. is searchable directly, but patient/doctor are refs — resolve
-// matching ids first so a name/UHID search actually finds records.
-async function dispenseSearchFilter(search) {
-  if (!search) return {};
-  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const [patients, doctors] = await Promise.all([
-    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
-    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
-  ]);
-  return {
-    $or: [
-      { dispenseNo: rx },
-      { patient: { $in: patients.map((p) => p._id) } },
-      { doctor: { $in: doctors.map((d) => d._id) } },
-    ],
-  };
-}
+// Dispense no. is searchable directly, but patient/doctor are refs — the
+// shared helper resolves those, with a cap so a broad term cannot pull the
+// whole patient list into memory. See services/searchFilters.js.
+const dispenseSearchFilter = (search) =>
+  buildSearchFilter(search, ['dispenseNo'], { patient: true, doctor: true });
 
 export async function listDispenses({ page, limit, search, patient, doctor }) {
   const filter = {};
@@ -287,7 +274,31 @@ export async function dispenseRowsForExport({ search, patient, doctor }) {
 // the batch-view (and FEFO dispensing) never drifts from what's recorded
 // here: a negative delta draws down real batches FEFO, a positive one is
 // recorded as its own "correction" batch so the sum still adds up.
-export async function adjustStock(id, { delta, reason }, userId) {
+export async function adjustStock(id, { delta, reason, batchNo, expiryDate }, userId) {
+  // Stock being added must land in a real, dated batch. Work out which one
+  // BEFORE touching currentStock — this used to invent a batch with a made-up
+  // two-year expiry, which put undatable stock into the FEFO queue and quietly
+  // corrupted every expiry report that counted on those dates being real.
+  let targetBatch = null;
+  if (delta > 0) {
+    targetBatch = await MedicineBatch.findOne({ medicine: id, batchNo });
+    if (!targetBatch && !expiryDate) {
+      throw ApiError.badRequest(
+        `Batch "${batchNo}" is not on record for this medicine — supply its expiry date to open it.`,
+        'BATCH_EXPIRY_REQUIRED'
+      );
+    }
+    if (targetBatch && targetBatch.expiryDate < new Date()) {
+      throw ApiError.badRequest(
+        `Batch "${batchNo}" expired on ${targetBatch.expiryDate.toISOString().slice(0, 10)} — expired stock cannot be added back.`,
+        'BATCH_EXPIRED'
+      );
+    }
+    if (!targetBatch && new Date(expiryDate) < new Date()) {
+      throw ApiError.badRequest('Cannot open a batch that has already expired', 'BATCH_EXPIRED');
+    }
+  }
+
   // Apply the delta conditionally so two concurrent adjustments can't lose
   // each other's write, and a negative one can never cross zero.
   const filter = delta < 0 ? { _id: id, currentStock: { $gte: -delta } } : { _id: id };
@@ -320,11 +331,16 @@ export async function adjustStock(id, { delta, reason }, userId) {
     // Any shortfall vs. recorded batches just means the batch ledger was
     // already out of sync — currentStock (the field being corrected) stays
     // the source of truth either way.
+  } else if (targetBatch) {
+    await MedicineBatch.updateOne(
+      { _id: targetBatch._id },
+      { $inc: { quantity: delta, receivedQuantity: delta } }
+    );
   } else {
     await MedicineBatch.create({
       medicine: id,
-      batchNo: `ADJ-${Date.now()}`,
-      expiryDate: new Date(Date.now() + 2 * 365 * 24 * 60 * 60 * 1000), // unknown expiry — far default
+      batchNo,
+      expiryDate,
       quantity: delta,
       receivedQuantity: delta,
       purchasePrice: m.purchasePrice,

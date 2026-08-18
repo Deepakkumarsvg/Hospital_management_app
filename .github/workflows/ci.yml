@@ -6,6 +6,25 @@ on:
   pull_request:
 
 jobs:
+  # Lint spans both halves of the repo, so it runs from the root rather than
+  # inside either package. It is its own job so a lint failure is legible at a
+  # glance instead of being buried in a test log.
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - run: npm ci
+      # Warnings are allowed through; errors are not. The remaining warnings
+      # are the useEffect-dependency ones that go away with the move to a
+      # data-fetching library, and failing the build on them today would only
+      # teach everyone to ignore the linter.
+      - run: npx eslint . --max-warnings 40
+
   backend:
     runs-on: ubuntu-latest
     # No mongo service container: the suite boots its own in-memory MongoDB as

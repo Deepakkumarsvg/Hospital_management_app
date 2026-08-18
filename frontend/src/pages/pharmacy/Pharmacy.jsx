@@ -305,7 +305,6 @@ function Expiring() {
 
 export default function Pharmacy() {
   const { role } = useAuth();
-  const toast = useToast();
   const canManage = CAN_PHARMACY_MANAGE.includes(role);
   const [tab, setTab] = useState('Medicines');
   const [stats, setStats] = useState(null);

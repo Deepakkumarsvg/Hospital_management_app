@@ -1,32 +1,30 @@
 import { Router } from 'express';
 import * as c from '../controllers/bloodBankController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 import { validate } from '../middleware/validate.js';
-import { ROLES } from '../config/roles.js';
 import {
   createDonorSchema, updateDonorSchema, collectUnitSchema, issueUnitSchema, reserveUnitSchema, listUnitsQuerySchema,
 } from '../validators/bloodBankValidator.js';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, auditTrail('BloodBank', { phi: true }));
 
 // Lab technicians run the blood bank; doctors/nurses can view stock.
-const CAN_VIEW = [ROLES.ADMIN, ROLES.LAB_TECHNICIAN, ROLES.DOCTOR, ROLES.NURSE];
-const CAN_MANAGE = [ROLES.ADMIN, ROLES.LAB_TECHNICIAN];
 
-router.get('/donors', authorize(...CAN_VIEW), c.listDonors);
-router.post('/donors', authorize(...CAN_MANAGE), validate(createDonorSchema), c.createDonor);
-router.put('/donors/:id', authorize(...CAN_MANAGE), validate(updateDonorSchema), c.updateDonor);
-router.delete('/donors/:id', authorize(ROLES.ADMIN), c.deleteDonor);
+router.get('/donors', requirePermission('bloodbank:view'), c.listDonors);
+router.post('/donors', requirePermission('bloodbank:manage'), validate(createDonorSchema), c.createDonor);
+router.put('/donors/:id', requirePermission('bloodbank:manage'), validate(updateDonorSchema), c.updateDonor);
+router.delete('/donors/:id', requirePermission('bloodbank:delete'), c.deleteDonor);
 
-router.get('/units', authorize(...CAN_VIEW), validate(listUnitsQuerySchema, 'query'), c.listUnits);
-router.get('/units/:id', authorize(...CAN_VIEW), c.getUnit);
-router.get('/stock', authorize(...CAN_VIEW), c.stock);
-router.post('/units', authorize(...CAN_MANAGE), validate(collectUnitSchema), c.collectUnit);
-router.patch('/units/:id/issue', authorize(...CAN_MANAGE), validate(issueUnitSchema), c.issueUnit);
-router.patch('/units/:id/reserve', authorize(...CAN_MANAGE), validate(reserveUnitSchema), c.reserveUnit);
-router.patch('/units/:id/unreserve', authorize(...CAN_MANAGE), c.unreserveUnit);
-router.patch('/units/:id/discard', authorize(...CAN_MANAGE), c.discardUnit);
+router.get('/units', requirePermission('bloodbank:view'), validate(listUnitsQuerySchema, 'query'), c.listUnits);
+router.get('/units/:id', requirePermission('bloodbank:view'), c.getUnit);
+router.get('/stock', requirePermission('bloodbank:view'), c.stock);
+router.post('/units', requirePermission('bloodbank:manage'), validate(collectUnitSchema), c.collectUnit);
+router.patch('/units/:id/issue', requirePermission('bloodbank:manage'), validate(issueUnitSchema), c.issueUnit);
+router.patch('/units/:id/reserve', requirePermission('bloodbank:manage'), validate(reserveUnitSchema), c.reserveUnit);
+router.patch('/units/:id/unreserve', requirePermission('bloodbank:manage'), c.unreserveUnit);
+router.patch('/units/:id/discard', requirePermission('bloodbank:manage'), c.discardUnit);
 
 export default router;

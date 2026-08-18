@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CalendarDays, FileText, FlaskConical, Receipt, IndianRupee, ArrowRight } from 'lucide-react';
+import { CalendarDays, FileText, FlaskConical, IndianRupee, ArrowRight } from 'lucide-react';
 import Card from '../../components/ui/Card.jsx';
 import Badge from '../../components/ui/Badge.jsx';
 import { PageSkeleton } from '../../components/ui/Skeleton.jsx';

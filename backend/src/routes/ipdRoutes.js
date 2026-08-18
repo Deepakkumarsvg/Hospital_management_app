@@ -1,32 +1,29 @@
 import { Router } from 'express';
 import * as controller from '../controllers/ipdController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 import { validate } from '../middleware/validate.js';
-import { ROLES } from '../config/roles.js';
 import {
   admitSchema, updateAdmissionSchema, nursingNoteSchema,
   transferBedSchema, dischargeSchema, listIpdQuerySchema, exportIpdQuerySchema,
 } from '../validators/ipdValidator.js';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, auditTrail('IPDAdmission', { phi: true }));
 
-const CAN_VIEW = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.NURSE, ROLES.RECEPTIONIST];
-const CAN_ADMIT = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.RECEPTIONIST];
-const CAN_NURSE = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.NURSE];
 
-router.get('/', authorize(...CAN_VIEW), validate(listIpdQuerySchema, 'query'), controller.list);
-router.get('/stats', authorize(...CAN_VIEW), controller.stats);
-router.get('/export', authorize(...CAN_VIEW), validate(exportIpdQuerySchema, 'query'), controller.exportAdmissions);
-router.get('/:id', authorize(...CAN_VIEW), controller.get);
-router.get('/:id/discharge-pdf', authorize(...CAN_VIEW), controller.dischargePdf);
+router.get('/', requirePermission('ipd:view'), validate(listIpdQuerySchema, 'query'), controller.list);
+router.get('/stats', requirePermission('ipd:view'), controller.stats);
+router.get('/export', requirePermission('ipd:view'), validate(exportIpdQuerySchema, 'query'), controller.exportAdmissions);
+router.get('/:id', requirePermission('ipd:view'), controller.get);
+router.get('/:id/discharge-pdf', requirePermission('ipd:view'), controller.dischargePdf);
 
-router.post('/', authorize(...CAN_ADMIT), validate(admitSchema), controller.admit);
-router.put('/:id', authorize(...CAN_ADMIT), validate(updateAdmissionSchema), controller.update);
-router.post('/:id/notes', authorize(...CAN_NURSE), validate(nursingNoteSchema), controller.addNote);
-router.patch('/:id/transfer', authorize(...CAN_ADMIT), validate(transferBedSchema), controller.transfer);
-router.patch('/:id/discharge', authorize(...CAN_ADMIT), validate(dischargeSchema), controller.discharge);
-router.patch('/:id/cancel', authorize(...CAN_ADMIT), controller.cancel);
+router.post('/', requirePermission('ipd:admit'), validate(admitSchema), controller.admit);
+router.put('/:id', requirePermission('ipd:admit'), validate(updateAdmissionSchema), controller.update);
+router.post('/:id/notes', requirePermission('ipd:nurse'), validate(nursingNoteSchema), controller.addNote);
+router.patch('/:id/transfer', requirePermission('ipd:admit'), validate(transferBedSchema), controller.transfer);
+router.patch('/:id/discharge', requirePermission('ipd:admit'), validate(dischargeSchema), controller.discharge);
+router.patch('/:id/cancel', requirePermission('ipd:admit'), controller.cancel);
 
 export default router;

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { register } from "../db/registry.js";
 import { tenantModel } from "../db/tenantModel.js";
 import { Counter } from './Counter.js';
+import { encryptedText } from '../utils/encryption.js';
 
 export const OPD_STATUSES = ['OPEN', 'COMPLETED', 'CANCELLED'];
 export const MED_ROUTES = ['ORAL', 'IV', 'IM', 'TOPICAL', 'INHALED', 'OTHER'];
@@ -43,17 +44,18 @@ const opdVisitSchema = new mongoose.Schema(
     visitDate: { type: Date, default: Date.now },
 
     vitals: { type: vitalsSchema, default: () => ({}) },
-    symptoms: { type: String, trim: true, default: '' },
+    // Encrypted at rest when configured — see utils/encryption.js.
+    symptoms: encryptedText(),
     diagnosis: { type: String, trim: true, default: '' },
     icdCode: { type: String, trim: true, uppercase: true, default: '' }, // ICD-10 e.g. J06.9
-    clinicalNotes: { type: String, trim: true, default: '' },
+    clinicalNotes: encryptedText(),
     prescription: { type: [prescriptionItemSchema], default: [] },
     followUpDate: { type: Date, default: null },
 
     status: { type: String, enum: OPD_STATUSES, default: 'OPEN', index: true },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
-  { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
+  { timestamps: true, toJSON: { virtuals: true, getters: true }, toObject: { virtuals: true, getters: true } }
 );
 
 opdVisitSchema.pre('save', async function (next) {

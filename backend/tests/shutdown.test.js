@@ -29,10 +29,13 @@ function install(server, deps) {
 
 afterEach(() => {
   // Handlers are registered on the shared process object; don't leak them
-  // into other test files.
+  // into other test files. uncaughtException especially: a stray listener
+  // there would intercept a genuine failure in a later test and report it as
+  // a shutdown instead.
   for (const l of listeners.splice(0)) process.off('SIGTERM', l);
   process.removeAllListeners('SIGINT');
   process.removeAllListeners('unhandledRejection');
+  process.removeAllListeners('uncaughtException');
 });
 
 describe('graceful shutdown', () => {

@@ -3,6 +3,8 @@ import rateLimit from 'express-rate-limit';
 import * as c from '../controllers/portalController.js';
 import { authenticate } from '../middleware/auth.js';
 import { requirePatient } from '../middleware/portal.js';
+import { auditTrail } from '../middleware/auditTrail.js';
+import { rateLimitStore } from '../config/rateLimitStore.js';
 import { validate } from '../middleware/validate.js';
 import { registerSchema, bookAppointmentSchema } from '../validators/portalValidator.js';
 
@@ -17,6 +19,7 @@ const registerLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
+  store: rateLimitStore('portal-register'),
   message: { success: false, message: 'Too many registration attempts. Please try again later.' },
 });
 
@@ -24,7 +27,11 @@ const registerLimiter = rateLimit({
 router.post('/register', registerLimiter, validate(registerSchema), c.register);
 
 // Everything below requires a logged-in PATIENT account.
-router.use(authenticate, requirePatient);
+//
+// Patients reading their own record is still an access event worth recording —
+// it is how an unauthorised portal login is spotted after the fact, and the
+// mutations here (booking, cancelling, paying) belong on the trail regardless.
+router.use(authenticate, requirePatient, auditTrail('Portal', { phi: true }));
 
 router.get('/me', c.me);
 router.get('/summary', c.summary);

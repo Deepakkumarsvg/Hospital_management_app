@@ -2,62 +2,72 @@ import {
   LayoutDashboard, Users, Stethoscope, CalendarDays, ClipboardList,
   BedDouble, FlaskConical, Scan, Pill, Receipt, Boxes, Scissors,
   BarChart3, UserCog, Settings, Building2, ShieldCheck, LayoutGrid, ShieldPlus,
-  Droplet, Truck, ScrollText, UserRound, Building,
+  Droplet, Truck, ScrollText, UserRound, Building, Bug, IndianRupee, Siren,
 } from 'lucide-react';
 
-// Full V1+ navigation. `roles` lists who may see each item.
-// An empty roles array means "all authenticated users".
-// `group` drives the section headers the sidebar renders under.
-// Items whose page is not built yet are marked `todo` (shown, but disabled).
+// Full V1+ navigation.
+//
+// `perm` is the permission that opens the item's page — the same key the server
+// guards that route with, so the sidebar shows exactly what the API will serve.
+// It used to be a list of role names duplicated from the backend, which meant
+// editing the permission matrix left the sidebar stale: a nurse granted
+// billing:view could reach /billing by typing the URL but had no link to it.
+//
+// `perm: null` means "any authenticated account".
+// `superAdminOnly` items are gated on identity, not permission — see App.jsx.
 export const NAV_ITEMS = [
-  { label: 'Dashboard', to: '/', icon: LayoutDashboard, roles: [], group: 'Overview' },
+  { label: 'Dashboard', to: '/', icon: LayoutDashboard, perm: null, group: 'Overview' },
 
-  { label: 'Patients', to: '/patients', icon: Users, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'], group: 'Patient Care' },
-  { label: 'Appointments', to: '/appointments', icon: CalendarDays, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'], group: 'Patient Care' },
-  { label: 'Doctors', to: '/doctors', icon: Stethoscope, roles: ['ADMIN', 'RECEPTIONIST', 'DOCTOR', 'NURSE'], group: 'Patient Care' },
-  { label: 'Departments', to: '/departments', icon: Building2, roles: ['ADMIN'], group: 'Patient Care' },
-  { label: 'OPD', to: '/opd', icon: ClipboardList, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'], group: 'Patient Care' },
-  { label: 'IPD', to: '/ipd', icon: BedDouble, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'], group: 'Patient Care' },
-  { label: 'Beds', to: '/beds', icon: LayoutGrid, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'], group: 'Patient Care' },
+  { label: 'Casualty', to: '/emergency', icon: Siren, perm: 'emergency:view', group: 'Patient Care' },
+  { label: 'Patients', to: '/patients', icon: Users, perm: 'patients:view', group: 'Patient Care' },
+  { label: 'Appointments', to: '/appointments', icon: CalendarDays, perm: 'appointments:view', group: 'Patient Care' },
+  { label: 'Doctors', to: '/doctors', icon: Stethoscope, perm: 'doctors:view', group: 'Patient Care' },
+  { label: 'Departments', to: '/departments', icon: Building2, perm: 'departments:manage', group: 'Patient Care' },
+  { label: 'OPD', to: '/opd', icon: ClipboardList, perm: 'opd:view', group: 'Patient Care' },
+  { label: 'IPD', to: '/ipd', icon: BedDouble, perm: 'ipd:view', group: 'Patient Care' },
+  { label: 'Beds', to: '/beds', icon: LayoutGrid, perm: 'facilities:view', group: 'Patient Care' },
 
-  { label: 'Laboratory', to: '/laboratory', icon: FlaskConical, roles: ['ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN', 'RECEPTIONIST'], group: 'Diagnostics' },
-  { label: 'Radiology', to: '/radiology', icon: Scan, roles: ['ADMIN', 'DOCTOR', 'RADIOLOGIST', 'NURSE', 'RECEPTIONIST'], group: 'Diagnostics' },
-  { label: 'Blood Bank', to: '/blood-bank', icon: Droplet, roles: ['ADMIN', 'LAB_TECHNICIAN', 'DOCTOR', 'NURSE'], group: 'Diagnostics' },
+  { label: 'Laboratory', to: '/laboratory', icon: FlaskConical, perm: 'laboratory:view', group: 'Diagnostics' },
+  { label: 'Radiology', to: '/radiology', icon: Scan, perm: 'radiology:view', group: 'Diagnostics' },
+  { label: 'Blood Bank', to: '/blood-bank', icon: Droplet, perm: 'bloodbank:view', group: 'Diagnostics' },
 
-  { label: 'Pharmacy', to: '/pharmacy', icon: Pill, roles: ['ADMIN', 'PHARMACIST', 'DOCTOR', 'NURSE'], group: 'Pharmacy & Inventory' },
-  { label: 'Inventory', to: '/inventory', icon: Boxes, roles: ['ADMIN', 'STORE_MANAGER'], group: 'Pharmacy & Inventory' },
+  { label: 'Pharmacy', to: '/pharmacy', icon: Pill, perm: 'pharmacy:view', group: 'Pharmacy & Inventory' },
+  { label: 'Inventory', to: '/inventory', icon: Boxes, perm: 'inventory:view', group: 'Pharmacy & Inventory' },
 
-  { label: 'OT', to: '/ot', icon: Scissors, roles: ['ADMIN', 'OT_STAFF', 'DOCTOR', 'NURSE'], group: 'Operations' },
-  { label: 'Ambulance', to: '/ambulance', icon: Truck, roles: ['ADMIN', 'RECEPTIONIST', 'NURSE'], group: 'Operations' },
-  { label: 'HR', to: '/hr', icon: UserRound, roles: ['ADMIN', 'HR'], group: 'Operations' },
+  { label: 'OT', to: '/ot', icon: Scissors, perm: 'ot:view', group: 'Operations' },
+  { label: 'Ambulance', to: '/ambulance', icon: Truck, perm: 'ambulance:view', group: 'Operations' },
+  { label: 'HR', to: '/hr', icon: UserRound, perm: 'hr:view', group: 'Operations' },
 
-  { label: 'Billing', to: '/billing', icon: Receipt, roles: ['ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'], group: 'Finance' },
-  { label: 'Insurance', to: '/insurance', icon: ShieldPlus, roles: ['ADMIN', 'ACCOUNTANT'], group: 'Finance' },
-  { label: 'Reports', to: '/reports', icon: BarChart3, roles: ['ADMIN', 'ACCOUNTANT'], group: 'Finance' },
+  { label: 'Billing', to: '/billing', icon: Receipt, perm: 'billing:view', group: 'Finance' },
+  { label: 'Insurance', to: '/insurance', icon: ShieldPlus, perm: 'insurance:view', group: 'Finance' },
+  { label: 'Reports', to: '/reports', icon: BarChart3, perm: 'reports:view', group: 'Finance' },
+  { label: 'Tariffs', to: '/tariffs', icon: IndianRupee, perm: 'tariffs:view', group: 'Finance' },
 
-  { label: 'Users', to: '/users', icon: UserCog, roles: ['ADMIN'], group: 'Administration' },
-  { label: 'Roles', to: '/roles', icon: ShieldCheck, roles: ['ADMIN'], group: 'Administration' },
-  { label: 'Audit Logs', to: '/audit-logs', icon: ScrollText, roles: ['ADMIN'], group: 'Administration' },
+  { label: 'Users', to: '/users', icon: UserCog, perm: 'users:manage', group: 'Administration' },
+  { label: 'Roles', to: '/roles', icon: ShieldCheck, perm: 'roles:manage', group: 'Administration' },
+  { label: 'Audit Logs', to: '/audit-logs', icon: ScrollText, perm: 'audit:view', group: 'Administration' },
+  { label: 'Errors', to: '/errors', icon: Bug, perm: 'errors:view', group: 'Administration' },
   // Platform-wide tenant management — spans every hospital, not just the
   // signed-in one, so it's SUPER_ADMIN only (a hospital's own ADMIN must
-  // not see or manage other hospitals' tenants).
-  { label: 'Hospitals', to: '/hospitals', icon: Building, roles: ['SUPER_ADMIN'], group: 'Administration' },
-  { label: 'Settings', to: '/settings', icon: Settings, roles: [], group: 'Administration' },
+  // not see or manage other hospitals' tenants). No permission grants it.
+  { label: 'Hospitals', to: '/hospitals', icon: Building, perm: null, superAdminOnly: true, group: 'Administration' },
+  { label: 'Settings', to: '/settings', icon: Settings, perm: null, group: 'Administration' },
 ];
 
-// SUPER_ADMIN sees everything; otherwise filter by the item's role list.
-export function navForRole(role) {
-  return NAV_ITEMS.filter(
-    (item) => item.roles.length === 0 || role === 'SUPER_ADMIN' || item.roles.includes(role)
-  );
+// `can` comes from useAuth() and already lets SUPER_ADMIN through everything.
+export function navFor({ can, isSuperAdmin }) {
+  return NAV_ITEMS.filter((item) => {
+    if (item.superAdminOnly) return isSuperAdmin;
+    return !item.perm || can(item.perm);
+  });
 }
 
 // Same list, bucketed into its sidebar sections (in a fixed display order),
-// dropping any section that ends up empty for this role.
+// dropping any section that ends up empty for this account.
 const GROUP_ORDER = ['Overview', 'Patient Care', 'Diagnostics', 'Pharmacy & Inventory', 'Operations', 'Finance', 'Administration'];
 
-export function groupedNavForRole(role) {
-  const items = navForRole(role);
+export function groupedNavFor({ can, isSuperAdmin }) {
+  const items = navFor({ can, isSuperAdmin });
   return GROUP_ORDER
     .map((group) => ({ group, items: items.filter((i) => i.group === group) }))
     .filter((g) => g.items.length > 0);

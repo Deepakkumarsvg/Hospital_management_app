@@ -1,10 +1,14 @@
 import axios from 'axios';
+import { reportError } from './errorReporting.js';
 
 // Single axios instance for the whole app.
 // baseURL is relative so Vite's dev proxy (and prod reverse proxy) forwards /api.
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
+  // The refresh token is an httpOnly cookie; without this axios would not send
+  // it and every silent refresh would fail.
+  withCredentials: true,
 });
 
 const TOKEN_KEY = 'hms-token';
@@ -54,18 +58,83 @@ function fallbackMessage(status, error) {
   return 'Something went wrong. Please try again.';
 }
 
+// Access tokens are short-lived, so a 401 is usually "this one just expired"
+// rather than "you are not signed in". The refresh cookie can mint a new one
+// without the user noticing.
+//
+// Refreshes are funnelled through a single in-flight promise: a screen that
+// fires eight requests at once must not fire eight refreshes, which would rotate
+// the token eight times and — because rotation retires the previous token —
+// trip the replay guard and sign the user out of everything.
+let refreshInFlight = null;
+
+function refreshAccessToken() {
+  refreshInFlight ??= axios
+    .post('/api/auth/refresh', null, {
+      withCredentials: true,
+      headers: { 'X-Tenant': getTenant() },
+    })
+    .then((res) => {
+      const token = res.data?.data?.token;
+      if (!token) throw new Error('no token');
+      setToken(token);
+      return token;
+    })
+    .finally(() => { refreshInFlight = null; });
+  return refreshInFlight;
+}
+
+function forceSignOut() {
+  setToken(null);
+  if (window.location.pathname !== '/login') window.location.assign('/login');
+}
+
 // Normalise errors so UI can always read err.message / err.code.
 api.interceptors.response.use(
   (res) => res,
-  (error) => {
+  async (error) => {
     const status = error.response?.status;
     const data = error.response?.data;
+    const config = error.config || {};
 
-    // Auto-logout on auth failure (except during an actual login attempt).
-    const isLoginCall = error.config?.url?.includes('/auth/login');
-    if (status === 401 && !isLoginCall) {
-      setToken(null);
-      if (window.location.pathname !== '/login') window.location.assign('/login');
+    const url = config.url || '';
+    // Endpoints where a 401 is the answer, not a stale token.
+    const isAuthCall = url.includes('/auth/login') || url.includes('/auth/refresh');
+
+    if (status === 401 && !isAuthCall && !config._retried) {
+      try {
+        const token = await refreshAccessToken();
+        // Replay the original request with the new token.
+        config._retried = true;
+        config.headers = { ...config.headers, Authorization: `Bearer ${token}` };
+        return api.request(config);
+      } catch {
+        forceSignOut();
+      }
+    } else if (status === 401 && !isAuthCall) {
+      forceSignOut();
+    }
+
+    // A 5xx is a bug on the server, and the server has already recorded it
+    // from its own side. This report adds the half the server cannot see:
+    // which screen the user was on, and what they were doing when it broke.
+    //
+    // 4xx are deliberately excluded — a rejected password or a validation
+    // failure is the system working, and an error list full of those is an
+    // error list nobody opens. Network failures are excluded too: the browser
+    // cannot tell "the server is down" from "the wifi dropped", and if it
+    // really is the former then the report has nowhere to go anyway.
+    if (status >= 500) {
+      reportError(new Error(`API ${status} on ${config.method?.toUpperCase() || 'GET'} ${url}`), {
+        mechanism: 'api.response',
+        status,
+        endpoint: url,
+        code: data?.error,
+        // Correlates with the server's own ErrorLog entry and pino log line
+        // for the very same failure.
+        requestId: error.response?.headers?.['x-request-id'],
+        route: window.location.pathname,
+      });
     }
 
     // A non-JSON body (an HTML error page from a proxy, say) leaves `data` as

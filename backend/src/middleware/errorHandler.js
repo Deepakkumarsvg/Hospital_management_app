@@ -1,4 +1,5 @@
 import { ApiError } from '../utils/ApiError.js';
+import { captureError } from '../services/errorTracking.js';
 
 // 404 for unmatched routes.
 export function notFoundHandler(req, _res, next) {
@@ -63,6 +64,13 @@ export function errorHandler(err, req, res, _next) {
 
   if (statusCode >= 500) {
     console.error('✗ Unhandled error:', err);
+
+    // Also record it where it can be searched and counted. Only 5xx: a 404 or
+    // a rejected password is the system working, and filling the error list
+    // with those is how the error list stops being read.
+    //
+    // Fire-and-forget — the response has to go out either way.
+    captureError({ error: err, req, source: 'backend', statusCode });
   }
 
   res.status(statusCode).json({

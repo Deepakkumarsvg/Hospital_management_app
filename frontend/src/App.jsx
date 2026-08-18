@@ -1,75 +1,100 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './routes/ProtectedRoute.jsx';
 import DashboardLayout from './layouts/DashboardLayout.jsx';
 import PortalLayout from './layouts/PortalLayout.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import PageLoader from './components/PageLoader.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx';
 import Login from './pages/Login.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import PortalRegister from './pages/portal/PortalRegister.jsx';
-import PortalDashboard from './pages/portal/PortalDashboard.jsx';
-import PortalAppointments from './pages/portal/PortalAppointments.jsx';
-import PortalRecords from './pages/portal/PortalRecords.jsx';
-import PortalBills from './pages/portal/PortalBills.jsx';
-import PortalProfile from './pages/portal/PortalProfile.jsx';
-import Dashboard from './pages/Dashboard.jsx';
-import PatientsList from './pages/patients/PatientsList.jsx';
-import PatientDetail from './pages/patients/PatientDetail.jsx';
-import Departments from './pages/departments/Departments.jsx';
-import DoctorsList from './pages/doctors/DoctorsList.jsx';
-import DoctorDetail from './pages/doctors/DoctorDetail.jsx';
-import AppointmentsList from './pages/appointments/AppointmentsList.jsx';
-import UsersList from './pages/users/UsersList.jsx';
-import Roles from './pages/roles/Roles.jsx';
-import OpdList from './pages/opd/OpdList.jsx';
-import OpdConsultation from './pages/opd/OpdConsultation.jsx';
-import IpdList from './pages/ipd/IpdList.jsx';
-import IpdDetail from './pages/ipd/IpdDetail.jsx';
-import Beds from './pages/beds/Beds.jsx';
-import Laboratory from './pages/laboratory/Laboratory.jsx';
-import LabOrderDetail from './pages/laboratory/LabOrderDetail.jsx';
-import Radiology from './pages/radiology/Radiology.jsx';
-import RadOrderDetail from './pages/radiology/RadOrderDetail.jsx';
-import Reports from './pages/reports/Reports.jsx';
-import Pharmacy from './pages/pharmacy/Pharmacy.jsx';
-import Inventory from './pages/inventory/Inventory.jsx';
-import BillingList from './pages/billing/BillingList.jsx';
-import InvoiceDetail from './pages/billing/InvoiceDetail.jsx';
-import Insurance from './pages/insurance/Insurance.jsx';
-import ClaimDetail from './pages/insurance/ClaimDetail.jsx';
-import OT from './pages/ot/OT.jsx';
-import BloodBank from './pages/bloodbank/BloodBank.jsx';
-import HR from './pages/hr/HR.jsx';
-import Ambulance from './pages/ambulance/Ambulance.jsx';
-import AuditLogs from './pages/audit/AuditLogs.jsx';
-import Settings from './pages/settings/Settings.jsx';
-import Hospitals from './pages/hospitals/Hospitals.jsx';
+const PortalDashboard = lazy(() => import('./pages/portal/PortalDashboard.jsx'));
+const PortalAppointments = lazy(() => import('./pages/portal/PortalAppointments.jsx'));
+const PortalRecords = lazy(() => import('./pages/portal/PortalRecords.jsx'));
+const PortalBills = lazy(() => import('./pages/portal/PortalBills.jsx'));
+const PortalProfile = lazy(() => import('./pages/portal/PortalProfile.jsx'));
+const Dashboard = lazy(() => import('./pages/Dashboard.jsx'));
+const PatientsList = lazy(() => import('./pages/patients/PatientsList.jsx'));
+const PatientDetail = lazy(() => import('./pages/patients/PatientDetail.jsx'));
+const Departments = lazy(() => import('./pages/departments/Departments.jsx'));
+const DoctorsList = lazy(() => import('./pages/doctors/DoctorsList.jsx'));
+const DoctorDetail = lazy(() => import('./pages/doctors/DoctorDetail.jsx'));
+const AppointmentsList = lazy(() => import('./pages/appointments/AppointmentsList.jsx'));
+const UsersList = lazy(() => import('./pages/users/UsersList.jsx'));
+const Roles = lazy(() => import('./pages/roles/Roles.jsx'));
+const OpdList = lazy(() => import('./pages/opd/OpdList.jsx'));
+const OpdConsultation = lazy(() => import('./pages/opd/OpdConsultation.jsx'));
+const Emergency = lazy(() => import('./pages/emergency/Emergency.jsx'));
+const IpdList = lazy(() => import('./pages/ipd/IpdList.jsx'));
+const IpdDetail = lazy(() => import('./pages/ipd/IpdDetail.jsx'));
+const Beds = lazy(() => import('./pages/beds/Beds.jsx'));
+const Laboratory = lazy(() => import('./pages/laboratory/Laboratory.jsx'));
+const LabOrderDetail = lazy(() => import('./pages/laboratory/LabOrderDetail.jsx'));
+const Radiology = lazy(() => import('./pages/radiology/Radiology.jsx'));
+const RadOrderDetail = lazy(() => import('./pages/radiology/RadOrderDetail.jsx'));
+const Reports = lazy(() => import('./pages/reports/Reports.jsx'));
+const Pharmacy = lazy(() => import('./pages/pharmacy/Pharmacy.jsx'));
+const Inventory = lazy(() => import('./pages/inventory/Inventory.jsx'));
+const BillingList = lazy(() => import('./pages/billing/BillingList.jsx'));
+const InvoiceDetail = lazy(() => import('./pages/billing/InvoiceDetail.jsx'));
+const Insurance = lazy(() => import('./pages/insurance/Insurance.jsx'));
+const ClaimDetail = lazy(() => import('./pages/insurance/ClaimDetail.jsx'));
+const OT = lazy(() => import('./pages/ot/OT.jsx'));
+const BloodBank = lazy(() => import('./pages/bloodbank/BloodBank.jsx'));
+const HR = lazy(() => import('./pages/hr/HR.jsx'));
+const Ambulance = lazy(() => import('./pages/ambulance/Ambulance.jsx'));
+const AuditLogs = lazy(() => import('./pages/audit/AuditLogs.jsx'));
+const ErrorLogs = lazy(() => import('./pages/ops/ErrorLogs.jsx'));
+const TariffPlans = lazy(() => import('./pages/tariffs/TariffPlans.jsx'));
+const Settings = lazy(() => import('./pages/settings/Settings.jsx'));
+const Hospitals = lazy(() => import('./pages/hospitals/Hospitals.jsx'));
 import NotFound from './pages/NotFound.jsx';
 
-// Role groups mirror backend RBAC.
-const PATIENT_ROLES = ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'];
-const APPT_ROLES = ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'];
-const DOCTOR_VIEW_ROLES = ['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST', 'DOCTOR', 'NURSE'];
-const CLINICAL_ROLES = ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'NURSE', 'RECEPTIONIST'];
-const LAB_ROLES = ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'NURSE', 'LAB_TECHNICIAN', 'RECEPTIONIST'];
-const RAD_ROLES = ['SUPER_ADMIN', 'ADMIN', 'DOCTOR', 'RADIOLOGIST', 'NURSE', 'RECEPTIONIST'];
-const REPORT_ROLES = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'];
-const PHARMACY_ROLES = ['SUPER_ADMIN', 'ADMIN', 'PHARMACIST', 'DOCTOR', 'NURSE'];
-const INVENTORY_ROLES = ['SUPER_ADMIN', 'ADMIN', 'STORE_MANAGER'];
-const BILLING_ROLES = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT', 'RECEPTIONIST'];
-const INSURANCE_ROLES = ['SUPER_ADMIN', 'ADMIN', 'ACCOUNTANT'];
-const OT_ROLES = ['SUPER_ADMIN', 'ADMIN', 'OT_STAFF', 'DOCTOR', 'NURSE'];
-const BLOOD_ROLES = ['SUPER_ADMIN', 'ADMIN', 'LAB_TECHNICIAN', 'DOCTOR', 'NURSE'];
-const HR_ROLES = ['SUPER_ADMIN', 'ADMIN', 'HR'];
-const AMBULANCE_ROLES = ['SUPER_ADMIN', 'ADMIN', 'RECEPTIONIST', 'NURSE'];
-const ADMIN_ROLES = ['SUPER_ADMIN', 'ADMIN'];
-// Platform-wide tenant management spans every hospital — a hospital's own
-// ADMIN must not reach it, only the true platform SUPER_ADMIN.
-const SUPER_ADMIN_ROLES = ['SUPER_ADMIN'];
+// Permission groups mirror the server's route guards (config/permissions.js).
+// The UI gates on permissions, not role names, so an edited permission matrix
+// actually changes what people can see — see ProtectedRoute.
+const P = {
+  patients: ['patients:view'],
+  appointments: ['appointments:view'],
+  doctors: ['doctors:view'],
+  departments: ['departments:manage'],
+  opd: ['opd:view'],
+  ipd: ['ipd:view'],
+  emergency: ['emergency:view'],
+  beds: ['facilities:view'],
+  lab: ['laboratory:view'],
+  radiology: ['radiology:view'],
+  reports: ['reports:view'],
+  pharmacy: ['pharmacy:view'],
+  inventory: ['inventory:view'],
+  billing: ['billing:view'],
+  insurance: ['insurance:view'],
+  ot: ['ot:view'],
+  bloodBank: ['bloodbank:view'],
+  hr: ['hr:view'],
+  ambulance: ['ambulance:view'],
+  audit: ['audit:view'],
+  errors: ['errors:view'],
+  users: ['users:manage'],
+  roles: ['roles:manage'],
+  tariffs: ['tariffs:view'],
+};
 
-function Guard({ roles, children }) {
-  return <ProtectedRoute roles={roles}>{children}</ProtectedRoute>;
+function Guard({ anyOf, children }) {
+  return <ProtectedRoute anyOf={anyOf}>{children}</ProtectedRoute>;
+}
+
+// The cross-hospital console belongs to the platform operator, not to any
+// hospital role — so it is gated on identity, exactly as the server gates it
+// (authorize(ROLES.SUPER_ADMIN)), and no permission can grant it.
+function SuperAdminOnly({ children }) {
+  const { isAuthenticated, loading, role } = useAuth();
+  if (loading) return <PageLoader label="Restoring your session…" />;
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (role !== 'SUPER_ADMIN') return <Navigate to="/" replace />;
+  return children;
 }
 
 // Staff area: authenticated + NOT a patient (patients belong in /portal).
@@ -93,6 +118,13 @@ function RequirePatient({ children }) {
 export default function App() {
   return (
     <BrowserRouter>
+      {/* Every page below is code-split, so there is always a moment where the
+          chunk is still arriving — Suspense is what fills it instead of a blank
+          frame. ErrorBoundary sits outside it so a chunk that fails to load,
+          or a component that throws while rendering, lands on something
+          recoverable rather than a white page. */}
+      <ErrorBoundary>
+        <Suspense fallback={<PageLoader label="Loading…" />}>
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -118,47 +150,52 @@ export default function App() {
         >
           <Route path="/" element={<Dashboard />} />
 
-          <Route path="/patients" element={<Guard roles={PATIENT_ROLES}><PatientsList /></Guard>} />
-          <Route path="/patients/:id" element={<Guard roles={PATIENT_ROLES}><PatientDetail /></Guard>} />
+          <Route path="/patients" element={<Guard anyOf={P.patients}><PatientsList /></Guard>} />
+          <Route path="/patients/:id" element={<Guard anyOf={P.patients}><PatientDetail /></Guard>} />
 
-          <Route path="/appointments" element={<Guard roles={APPT_ROLES}><AppointmentsList /></Guard>} />
+          <Route path="/appointments" element={<Guard anyOf={P.appointments}><AppointmentsList /></Guard>} />
 
-          <Route path="/opd" element={<Guard roles={CLINICAL_ROLES}><OpdList /></Guard>} />
-          <Route path="/opd/:id" element={<Guard roles={CLINICAL_ROLES}><OpdConsultation /></Guard>} />
-          <Route path="/ipd" element={<Guard roles={CLINICAL_ROLES}><IpdList /></Guard>} />
-          <Route path="/ipd/:id" element={<Guard roles={CLINICAL_ROLES}><IpdDetail /></Guard>} />
-          <Route path="/beds" element={<Guard roles={CLINICAL_ROLES}><Beds /></Guard>} />
+          <Route path="/opd" element={<Guard anyOf={P.opd}><OpdList /></Guard>} />
+          <Route path="/opd/:id" element={<Guard anyOf={P.opd}><OpdConsultation /></Guard>} />
+          <Route path="/emergency" element={<Guard anyOf={P.emergency}><Emergency /></Guard>} />
+          <Route path="/ipd" element={<Guard anyOf={P.ipd}><IpdList /></Guard>} />
+          <Route path="/ipd/:id" element={<Guard anyOf={P.ipd}><IpdDetail /></Guard>} />
+          <Route path="/beds" element={<Guard anyOf={P.beds}><Beds /></Guard>} />
 
-          <Route path="/laboratory" element={<Guard roles={LAB_ROLES}><Laboratory /></Guard>} />
-          <Route path="/laboratory/:id" element={<Guard roles={LAB_ROLES}><LabOrderDetail /></Guard>} />
-          <Route path="/radiology" element={<Guard roles={RAD_ROLES}><Radiology /></Guard>} />
-          <Route path="/radiology/:id" element={<Guard roles={RAD_ROLES}><RadOrderDetail /></Guard>} />
-          <Route path="/reports" element={<Guard roles={REPORT_ROLES}><Reports /></Guard>} />
-          <Route path="/pharmacy" element={<Guard roles={PHARMACY_ROLES}><Pharmacy /></Guard>} />
-          <Route path="/inventory" element={<Guard roles={INVENTORY_ROLES}><Inventory /></Guard>} />
-          <Route path="/billing" element={<Guard roles={BILLING_ROLES}><BillingList /></Guard>} />
-          <Route path="/billing/:id" element={<Guard roles={BILLING_ROLES}><InvoiceDetail /></Guard>} />
-          <Route path="/insurance" element={<Guard roles={INSURANCE_ROLES}><Insurance /></Guard>} />
-          <Route path="/insurance/:id" element={<Guard roles={INSURANCE_ROLES}><ClaimDetail /></Guard>} />
+          <Route path="/laboratory" element={<Guard anyOf={P.lab}><Laboratory /></Guard>} />
+          <Route path="/laboratory/:id" element={<Guard anyOf={P.lab}><LabOrderDetail /></Guard>} />
+          <Route path="/radiology" element={<Guard anyOf={P.radiology}><Radiology /></Guard>} />
+          <Route path="/radiology/:id" element={<Guard anyOf={P.radiology}><RadOrderDetail /></Guard>} />
+          <Route path="/reports" element={<Guard anyOf={P.reports}><Reports /></Guard>} />
+          <Route path="/pharmacy" element={<Guard anyOf={P.pharmacy}><Pharmacy /></Guard>} />
+          <Route path="/inventory" element={<Guard anyOf={P.inventory}><Inventory /></Guard>} />
+          <Route path="/billing" element={<Guard anyOf={P.billing}><BillingList /></Guard>} />
+          <Route path="/billing/:id" element={<Guard anyOf={P.billing}><InvoiceDetail /></Guard>} />
+          <Route path="/tariffs" element={<Guard anyOf={P.tariffs}><TariffPlans /></Guard>} />
+          <Route path="/insurance" element={<Guard anyOf={P.insurance}><Insurance /></Guard>} />
+          <Route path="/insurance/:id" element={<Guard anyOf={P.insurance}><ClaimDetail /></Guard>} />
 
-          <Route path="/ot" element={<Guard roles={OT_ROLES}><OT /></Guard>} />
-          <Route path="/blood-bank" element={<Guard roles={BLOOD_ROLES}><BloodBank /></Guard>} />
-          <Route path="/hr" element={<Guard roles={HR_ROLES}><HR /></Guard>} />
-          <Route path="/ambulance" element={<Guard roles={AMBULANCE_ROLES}><Ambulance /></Guard>} />
-          <Route path="/audit-logs" element={<Guard roles={ADMIN_ROLES}><AuditLogs /></Guard>} />
+          <Route path="/ot" element={<Guard anyOf={P.ot}><OT /></Guard>} />
+          <Route path="/blood-bank" element={<Guard anyOf={P.bloodBank}><BloodBank /></Guard>} />
+          <Route path="/hr" element={<Guard anyOf={P.hr}><HR /></Guard>} />
+          <Route path="/ambulance" element={<Guard anyOf={P.ambulance}><Ambulance /></Guard>} />
+          <Route path="/audit-logs" element={<Guard anyOf={P.audit}><AuditLogs /></Guard>} />
+          <Route path="/errors" element={<Guard anyOf={P.errors}><ErrorLogs /></Guard>} />
 
-          <Route path="/doctors" element={<Guard roles={DOCTOR_VIEW_ROLES}><DoctorsList /></Guard>} />
-          <Route path="/doctors/:id" element={<Guard roles={DOCTOR_VIEW_ROLES}><DoctorDetail /></Guard>} />
+          <Route path="/doctors" element={<Guard anyOf={P.doctors}><DoctorsList /></Guard>} />
+          <Route path="/doctors/:id" element={<Guard anyOf={P.doctors}><DoctorDetail /></Guard>} />
 
-          <Route path="/departments" element={<Guard roles={ADMIN_ROLES}><Departments /></Guard>} />
-          <Route path="/users" element={<Guard roles={ADMIN_ROLES}><UsersList /></Guard>} />
-          <Route path="/roles" element={<Guard roles={ADMIN_ROLES}><Roles /></Guard>} />
+          <Route path="/departments" element={<Guard anyOf={P.departments}><Departments /></Guard>} />
+          <Route path="/users" element={<Guard anyOf={P.users}><UsersList /></Guard>} />
+          <Route path="/roles" element={<Guard anyOf={P.roles}><Roles /></Guard>} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/hospitals" element={<Guard roles={SUPER_ADMIN_ROLES}><Hospitals /></Guard>} />
+          <Route path="/hospitals" element={<SuperAdminOnly><Hospitals /></SuperAdminOnly>} />
         </Route>
 
         <Route path="*" element={<NotFound />} />
       </Routes>
+        </Suspense>
+      </ErrorBoundary>
     </BrowserRouter>
   );
 }

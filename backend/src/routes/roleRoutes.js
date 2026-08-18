@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
-import { ROLES } from '../config/roles.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 import * as c from '../controllers/roleController.js';
 
 const router = Router();
-router.use(authenticate, authorize(ROLES.ADMIN));
+router.use(authenticate, requirePermission('roles:manage'), auditTrail('Role'));
 
 router.get('/', c.listRoles);
 router.get('/permissions/catalog', c.permissionCatalog);

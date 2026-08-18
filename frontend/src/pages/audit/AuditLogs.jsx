@@ -122,7 +122,7 @@ export default function AuditLogs() {
           {RANGE_PRESETS.map((p) => (
             <button key={p.key} onClick={() => applyPreset(p)}
               className={'rounded-full border px-3 py-1 text-xs font-medium transition-colors ' +
-                (activePreset === p.key ? 'border-fg bg-fg text-bg' : 'border-border text-muted hover:text-fg hover:bg-surface')}>
+                (activePreset === p.key ? 'border-accent bg-accent text-accent-fg' : 'border-border text-muted hover:text-fg hover:bg-surface')}>
               {p.label}
             </button>
           ))}

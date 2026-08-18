@@ -23,6 +23,7 @@ import { Appointment } from '../models/Appointment.js';
 import { OPDVisit } from '../models/OPDVisit.js';
 import { Invoice } from '../models/Invoice.js';
 import { ROLE_DEFINITIONS, ROLES } from '../config/roles.js';
+import { toPaise } from '../utils/money.js';
 
 // `--fresh` wipes demo collections first so the seed is fully reproducible.
 // Without it the seed is idempotent (upsert by unique keys) and never
@@ -313,13 +314,14 @@ async function seedBody() {
     }).save();
 
     // An invoice (consultation + lab), partially paid.
+    // Invoice amounts are stored as integer paise — see utils/money.js.
     const inv = new Invoice({
       patient: demoPatient._id,
       items: [
-        { category: 'CONSULTATION', description: 'Cardiology consultation', quantity: 1, unitPrice: 800 },
-        { category: 'LABORATORY', description: 'Complete Blood Count (CBC)', quantity: 1, unitPrice: 350 },
+        { category: 'CONSULTATION', description: 'Cardiology consultation', quantity: 1, unitPrice: toPaise(800) },
+        { category: 'LABORATORY', description: 'Complete Blood Count (CBC)', quantity: 1, unitPrice: toPaise(350) },
       ],
-      discount: 0, taxPercent: 0, paidAmount: 800,
+      discount: 0, taxPercent: 0, paidAmount: toPaise(800),
     });
     inv.recompute();
     await inv.save();

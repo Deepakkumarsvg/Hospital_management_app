@@ -4,6 +4,8 @@ import { getSettings } from '../services/settingService.js';
 import { generateInvoicePdf, generatePrescriptionPdf } from '../utils/pdf.js';
 import { notify } from '../services/notificationService.js';
 import { audit } from '../utils/audit.js';
+// Documents carry paise; audit lines and notifications are read by humans.
+import { toRupees } from '../utils/money.js';
 import { ROLES } from '../config/roles.js';
 
 // ---- Public ----
@@ -89,8 +91,8 @@ export const payOrder = asyncHandler(async (req, res) =>
 export const payVerify = asyncHandler(async (req, res) => {
   const result = await service.verifyPayment(req.patientId, req.params.id, req.body);
   if (result.payment) {
-    audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `Online ₹${result.payment.amount} on ${result.invoice.invoiceNo}` });
-    notify({ role: ROLES.ACCOUNTANT, type: 'BILLING', title: 'Online payment received', message: `${result.invoice.invoiceNo} · ₹${result.payment.amount}`, link: '/billing' });
+    audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `Online ₹${toRupees(result.payment.amount)} on ${result.invoice.invoiceNo}` });
+    notify({ role: ROLES.ACCOUNTANT, type: 'BILLING', title: 'Online payment received', message: `${result.invoice.invoiceNo} · ₹${toRupees(result.payment.amount)}`, link: '/billing' });
   }
   sendSuccess(res, { message: 'Payment successful', data: result });
 });

@@ -8,6 +8,10 @@ import doctorRoutes from './doctorRoutes.js';
 import appointmentRoutes from './appointmentRoutes.js';
 import opdRoutes from './opdRoutes.js';
 import ipdRoutes from './ipdRoutes.js';
+import emergencyRoutes from './emergencyRoutes.js';
+import clinicalRoutes from './clinicalRoutes.js';
+import queueRoutes from './queueRoutes.js';
+import depositRoutes from './depositRoutes.js';
 import { wardRoutes, roomRoutes, bedRoutes } from './facilityRoutes.js';
 import labRoutes from './labRoutes.js';
 import radiologyRoutes from './radiologyRoutes.js';
@@ -22,10 +26,12 @@ import hrRoutes from './hrRoutes.js';
 import ambulanceRoutes from './ambulanceRoutes.js';
 import notificationRoutes from './notificationRoutes.js';
 import auditRoutes from './auditRoutes.js';
+import errorRoutes from './errorRoutes.js';
 import settingRoutes from './settingRoutes.js';
 import portalRoutes from './portalRoutes.js';
 import opsRoutes from './opsRoutes.js';
 import roleRoutes from './roleRoutes.js';
+import tariffRoutes from './tariffRoutes.js';
 
 const router = Router();
 
@@ -65,6 +71,10 @@ router.use('/doctors', doctorRoutes);
 router.use('/appointments', appointmentRoutes);
 router.use('/opd', opdRoutes);
 router.use('/ipd', ipdRoutes);
+router.use('/emergency', emergencyRoutes);
+router.use('/clinical', clinicalRoutes);
+router.use('/queue', queueRoutes);
+router.use('/deposits', depositRoutes);
 router.use('/wards', wardRoutes);
 router.use('/rooms', roomRoutes);
 router.use('/beds', bedRoutes);
@@ -81,10 +91,12 @@ router.use('/hr', hrRoutes);
 router.use('/ambulance', ambulanceRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/audit-logs', auditRoutes);
+router.use('/errors', errorRoutes);
 router.use('/settings', settingRoutes);
 router.use('/portal', portalRoutes);
 router.use('/ops', opsRoutes);
 router.use('/roles', roleRoutes);
+router.use('/tariffs', tariffRoutes);
 
 // All V1 modules mounted.
 

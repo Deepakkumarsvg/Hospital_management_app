@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
+import { authorize, requirePermission } from '../middleware/rbac.js';
 import { ROLES } from '../config/roles.js';
 import { asyncHandler, sendSuccess } from '../utils/apiResponse.js';
 import { channelsStatus } from '../services/channels.js';
@@ -20,7 +20,7 @@ router.post('/payments/webhook', asyncHandler(async (req, res) => {
 }));
 
 // Admin-only operations.
-router.use(authenticate, authorize(ROLES.ADMIN));
+router.use(authenticate, requirePermission('ops:admin'));
 
 router.get('/status', (_req, res) =>
   sendSuccess(res, { message: 'Integrations status', data: { channels: channelsStatus(), payments: gatewayStatus() } }));

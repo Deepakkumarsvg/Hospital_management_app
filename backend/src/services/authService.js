@@ -5,6 +5,8 @@ import { ApiError } from '../utils/ApiError.js';
 import { signToken } from '../utils/jwt.js';
 import { deliver } from './channels.js';
 import { getSettings } from './settingService.js';
+import { permissionsForRole } from './roleService.js';
+import { issueSession, rotateSession, revokeAllForUser } from './sessionService.js';
 
 // After this many consecutive failures the account is locked for a while.
 // Slows credential stuffing to a crawl without ever permanently locking a
@@ -15,8 +17,12 @@ const RESET_TOKEN_TTL_MINUTES = 30;
 
 const hashResetToken = (raw) => crypto.createHash('sha256').update(raw).digest('hex');
 
-// Validate credentials and issue a JWT. Business logic lives here, not in the controller.
-export async function loginUser({ email, password }, tenant = null) {
+// Validate credentials and issue a token pair. Business logic lives here, not
+// in the controller.
+//
+// `context` carries the user agent and address of the sign-in, recorded on the
+// session so an account page can show "which devices am I signed in on".
+export async function loginUser({ email, password }, tenant = null, context = {}) {
   // passwordHash has select:false, so explicitly request it.
   const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash');
   if (!user) throw ApiError.unauthorized('Invalid email or password', 'INVALID_CREDENTIALS');
@@ -54,7 +60,33 @@ export async function loginUser({ email, password }, tenant = null) {
 
   // Bake the tenant into the token so it can be cross-checked on every request.
   const token = signToken({ sub: user._id.toString(), role: user.role, tenant: tenant?.slug || null });
-  return { token, user: user.toSafeJSON() };
+  // The revocable half of the pair — see services/sessionService.js.
+  const refreshToken = await issueSession(user._id, context);
+
+  // Ship the effective permissions with the login response, not only from
+  // /auth/me. The client gates its navigation on them, and without them here it
+  // would render an empty app for the first page-load after signing in.
+  const safe = user.toSafeJSON();
+  safe.permissions = await permissionsForRole(user.role);
+  return { token, refreshToken, user: safe };
+}
+
+// Mint a new access token for the user behind a refresh token, rotating the
+// session in the same step.
+export async function refreshSession(rawRefreshToken, tenant = null, context = {}) {
+  const { raw, userId } = await rotateSession(rawRefreshToken, context);
+
+  const user = await User.findById(userId);
+  if (!user || user.status !== 'ACTIVE') {
+    // The account went away or was suspended while the session was alive.
+    await revokeAllForUser(userId);
+    throw ApiError.unauthorized('Account is no longer active', 'ACCOUNT_INACTIVE');
+  }
+
+  const token = signToken({ sub: user._id.toString(), role: user.role, tenant: tenant?.slug || null });
+  const safe = user.toSafeJSON();
+  safe.permissions = await permissionsForRole(user.role);
+  return { token, refreshToken: raw, user: safe };
 }
 
 // Self-service password change — requires proving the current password first.
@@ -71,6 +103,11 @@ export async function changePassword(userId, currentPassword, newPassword) {
 
   await user.setPassword(newPassword);
   await user.save();
+
+  // Changing a password is how someone reacts to a suspected compromise, so it
+  // has to end the sessions too. passwordChangedAt already retires outstanding
+  // access tokens; without this the refresh tokens would happily mint new ones.
+  await revokeAllForUser(user._id, 'password changed');
 }
 
 // Step 1 of forgot-password: mail a one-time link. Always resolves the same
@@ -111,5 +148,9 @@ export async function resetPassword(rawToken, newPassword) {
   // single-use and a locked-out user is freed by completing a reset.
   await user.setPassword(newPassword);
   await user.save();
+
+  // A reset is the recovery path after losing control of an account — every
+  // existing session has to go with it.
+  await revokeAllForUser(user._id, 'password reset');
   return user.toSafeJSON();
 }

@@ -47,7 +47,7 @@ hospital-management/
 │       ├── routes/       # ProtectedRoute
 │       ├── services/     # api.js (axios), authService
 │       └── utils/        # navigation, cn
-└── docs/             # SETUP.md, DATABASE.md, API_DOCUMENTATION.md
+└── docs/             # SETUP.md, DATABASE.md, API_DOCUMENTATION.md, ERROR_TRACKING.md
 ```
 
 ---
@@ -234,5 +234,22 @@ that reuses the existing DB — **no migration needed**.
 - **Security:** a JWT minted for one hospital is rejected on another (`TENANT_MISMATCH`).
 - **How it works:** `useDb()` (one pool, many DBs) + AsyncLocalStorage tenant context + model Proxies. See the **[Multi-Tenancy Blueprint](./docs/MULTITENANCY_BLUEPRINT.md)**.
 
+
+## 🐞 Error tracking — shipped
+Errors on the live server come back to you instead of dying in a log tail.
+
+- **Captured:** every 5xx, uncaught exceptions, React render crashes, and
+  requests slower than `SLOW_REQUEST_MS`. 4xx is deliberately ignored — a
+  rejected password is the system working.
+- **Grouped:** one row per distinct failure with a count, not one per
+  occurrence. Ids are normalised out, so one bug across 400 patients is one row.
+- **Read them:** *Administration → Errors* in the app, or pull them into your
+  working copy with `npm run errors` — stack traces included, so a report
+  arrives as `billingService.js:212` rather than 'billing is broken'.
+- **Optional Sentry** for alerting (`SENTRY_DSN`); everything works without it,
+  self-hosted in the hospital's own database. No request bodies, query strings
+  or session replay ever leave the estate.
+
+Setup, privacy notes and configuration: **[Error tracking](./docs/ERROR_TRACKING.md)**.
 See [docs/](./docs) for details.
 # Hospital_management_app

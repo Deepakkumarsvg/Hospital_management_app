@@ -5,6 +5,7 @@ import { Appointment } from '../models/Appointment.js';
 import { MedicineDispense } from '../models/MedicineDispense.js';
 import { LabOrder } from '../models/LabOrder.js';
 import { ApiError } from '../utils/ApiError.js';
+import { buildSearchFilter } from './searchFilters.js';
 
 const POPULATE = [
   { path: 'patient', select: 'uhid firstName lastName phone gender dateOfBirth allergies' },
@@ -12,23 +13,6 @@ const POPULATE = [
   { path: 'department', select: 'name code' },
 ];
 
-// Visit number is searchable directly, but patient/doctor are refs — resolve
-// matching ids first so a name/UHID search actually finds visits.
-async function searchFilter(search) {
-  if (!search) return {};
-  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const [patients, doctors] = await Promise.all([
-    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
-    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
-  ]);
-  return {
-    $or: [
-      { visitNo: rx },
-      { patient: { $in: patients.map((p) => p._id) } },
-      { doctor: { $in: doctors.map((d) => d._id) } },
-    ],
-  };
-}
 
 export async function listVisits({ page, limit, search, status, doctor, patient, date }) {
   const filter = {};
@@ -40,7 +24,7 @@ export async function listVisits({ page, limit, search, status, doctor, patient,
     const end = new Date(start); end.setDate(end.getDate() + 1);
     filter.visitDate = { $gte: start, $lt: end };
   }
-  Object.assign(filter, await searchFilter(search));
+  Object.assign(filter, await buildSearchFilter(search, ['visitNo'], { patient: true, doctor: true }));
 
   const [items, total] = await Promise.all([
     OPDVisit.find(filter).populate(POPULATE).sort({ visitDate: -1 }).skip((page - 1) * limit).limit(limit),
@@ -160,7 +144,7 @@ export async function opdRowsForExport({ search, status, doctor, patient, date }
     const end = new Date(start); end.setDate(end.getDate() + 1);
     filter.visitDate = { $gte: start, $lt: end };
   }
-  Object.assign(filter, await searchFilter(search));
+  Object.assign(filter, await buildSearchFilter(search, ['visitNo'], { patient: true, doctor: true }));
 
   const items = await OPDVisit.find(filter).populate(POPULATE).sort({ visitDate: -1 });
 

@@ -8,6 +8,7 @@ import { LabOrder } from '../models/LabOrder.js';
 import { RadiologyOrder } from '../models/RadiologyOrder.js';
 import { Invoice } from '../models/Invoice.js';
 import { ApiError } from '../utils/ApiError.js';
+import { toRupees } from '../utils/money.js';
 import { signToken } from '../utils/jwt.js';
 import { ROLES } from '../config/roles.js';
 import { createAppointment, changeStatus, updateAppointment } from './appointmentService.js';
@@ -166,6 +167,8 @@ export async function summary(patientId) {
   ]);
   return {
     appointments, upcoming, prescriptions, labOrders, invoices,
-    totalDue: Math.round(dueAgg[0]?.due || 0),
+    // Stored as paise; aggregation results bypass the schema's toJSON, so the
+    // conversion back to rupees happens here. See utils/money.js.
+    totalDue: toRupees(dueAgg[0]?.due || 0),
   };
 }

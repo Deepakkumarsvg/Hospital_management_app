@@ -120,13 +120,56 @@ describe('pharmacy stock integrity', () => {
     await Promise.all([
       pharmacy.adjustStock(med._id, { delta: -10, reason: 'Damaged' }, null),
       pharmacy.adjustStock(med._id, { delta: -15, reason: 'Expired' }, null),
-      pharmacy.adjustStock(med._id, { delta: 5, reason: 'Recount' }, null),
+      pharmacy.adjustStock(med._id, { delta: 5, reason: 'Recount', batchNo: 'B1' }, null),
     ]);
 
     const after = await Medicine.findById(med._id);
     expect(after.currentStock).toBe(80);            // 100 - 10 - 15 + 5
     expect(after.stockAdjustments).toHaveLength(3); // every correction is on record
     expect(await batchTotal(med._id)).toBe(80);
+  }));
+
+  it('puts recovered stock back into the batch it came from', () => inTenant(async () => {
+    await pharmacy.receiveBatch(med._id, { batchNo: 'B1', expiryDate: future(365), quantity: 20 }, null);
+    await pharmacy.adjustStock(med._id, { delta: 5, reason: 'Recount', batchNo: 'B1' }, null);
+
+    // No phantom batch — the stock joined the real one, keeping its real expiry.
+    const batches = await MedicineBatch.find({ medicine: med._id });
+    expect(batches).toHaveLength(1);
+    expect(batches[0].batchNo).toBe('B1');
+    expect(batches[0].quantity).toBe(25);
+    expect(await batchTotal(med._id)).toBe(25);
+  }));
+
+  it('opens a named batch when the recovered stock is from a new one', () => inTenant(async () => {
+    const expiry = future(200);
+    await pharmacy.adjustStock(med._id, { delta: 12, reason: 'Found in store', batchNo: 'B9', expiryDate: expiry }, null);
+
+    const batch = await MedicineBatch.findOne({ medicine: med._id, batchNo: 'B9' });
+    expect(batch.quantity).toBe(12);
+    // The real expiry, not an invented far-future one.
+    expect(batch.expiryDate.toISOString().slice(0, 10)).toBe(new Date(expiry).toISOString().slice(0, 10));
+  }));
+
+  it('refuses to add stock to an unknown batch with no expiry date', () => inTenant(async () => {
+    await expect(pharmacy.adjustStock(med._id, { delta: 10, reason: 'Recount', batchNo: 'GHOST' }, null))
+      .rejects.toMatchObject({ errorCode: 'BATCH_EXPIRY_REQUIRED' });
+
+    // Nothing moved — stock and batches are untouched.
+    expect((await Medicine.findById(med._id)).currentStock).toBe(0);
+    expect(await MedicineBatch.countDocuments({ medicine: med._id })).toBe(0);
+  }));
+
+  it('refuses to add stock back into an expired batch', () => inTenant(async () => {
+    await MedicineBatch.create({
+      medicine: med._id, batchNo: 'OLD', expiryDate: new Date(Date.now() - 86400000),
+      quantity: 0, receivedQuantity: 5,
+    });
+
+    await expect(pharmacy.adjustStock(med._id, { delta: 5, reason: 'Recount', batchNo: 'OLD' }, null))
+      .rejects.toMatchObject({ errorCode: 'BATCH_EXPIRED' });
+
+    expect((await Medicine.findById(med._id)).currentStock).toBe(0);
   }));
 
   it('refuses an adjustment that would cross zero', () => inTenant(async () => {

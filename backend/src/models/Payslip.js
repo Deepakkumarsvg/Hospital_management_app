@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { register } from "../db/registry.js";
 import { tenantModel } from "../db/tenantModel.js";
 import { Counter } from './Counter.js';
+import { paiseField, toJSONRupees } from '../utils/money.js';
 
 export const PAYSLIP_STATUSES = ['GENERATED', 'PAID'];
 
@@ -13,23 +14,32 @@ const payslipSchema = new mongoose.Schema(
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },
     month: { type: Number, min: 1, max: 12, required: true },
     year: { type: Number, required: true },
-    basicSalary: { type: Number, min: 0, default: 0 },
+    // Paise, like every other amount. See utils/money.js.
+    basicSalary: paiseField(),
     workingDays: { type: Number, min: 0, default: 0 },   // days in the month
     presentDays: { type: Number, min: 0, default: 0 },
     absentDays: { type: Number, min: 0, default: 0 },
     halfDays: { type: Number, min: 0, default: 0 },
     leaveDays: { type: Number, min: 0, default: 0 },
     unmarkedDays: { type: Number, min: 0, default: 0 },  // no attendance record at all — treated as unpaid
-    grossPay: { type: Number, min: 0, default: 0 },
-    adjustment: { type: Number, default: 0 },              // signed manual correction (bonus/deduction)
+    grossPay: paiseField(),
+    // Signed manual correction (bonus/deduction) — the one amount that may be
+    // negative, so it opts out of the non-negative floor.
+    adjustment: paiseField({ min: undefined }),
     adjustmentNote: { type: String, trim: true, default: '' },
-    netPay: { type: Number, min: 0, default: 0 },
+    netPay: paiseField(),
     status: { type: String, enum: PAYSLIP_STATUSES, default: 'GENERATED', index: true },
     generatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
     paidAt: { type: Date, default: null },
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// The wire format is rupees — storage is the only thing that changed.
+payslipSchema.set('toJSON', {
+  virtuals: true,
+  transform: toJSONRupees(['basicSalary', 'grossPay', 'adjustment', 'netPay']),
+});
 
 payslipSchema.index({ employee: 1, month: 1, year: 1 }, { unique: true });
 

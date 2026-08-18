@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { register } from "../db/registry.js";
 import { tenantModel } from "../db/tenantModel.js";
 import { Counter } from './Counter.js';
+import { paiseField, toJSONRupees } from '../utils/money.js';
 
 export const CLAIM_STATUSES = ['DRAFT', 'SUBMITTED', 'UNDER_REVIEW', 'APPROVED', 'REJECTED', 'SETTLED'];
 
@@ -34,9 +35,11 @@ const insuranceClaimSchema = new mongoose.Schema(
     insuranceCompany: { type: String, required: true, trim: true },
     policyNumber: { type: String, trim: true, default: '' },
     preAuthNo: { type: String, trim: true, default: '' },
-    claimAmount: { type: Number, min: 0, required: true },
-    approvedAmount: { type: Number, min: 0, default: 0 },
-    rejectedAmount: { type: Number, min: 0, default: 0 },
+    // Paise — these amounts are posted straight onto an invoice as a payment,
+    // so they have to be in the same unit as the ledger. See utils/money.js.
+    claimAmount: paiseField({ required: true }),
+    approvedAmount: paiseField(),
+    rejectedAmount: paiseField(),
     status: { type: String, enum: CLAIM_STATUSES, default: 'DRAFT', index: true },
     notes: { type: String, trim: true, default: '' },
     history: { type: [historySchema], default: [] },
@@ -44,6 +47,12 @@ const insuranceClaimSchema = new mongoose.Schema(
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// The wire format is rupees — storage is the only thing that changed.
+insuranceClaimSchema.set('toJSON', {
+  virtuals: true,
+  transform: toJSONRupees(['claimAmount', 'approvedAmount', 'rejectedAmount']),
+});
 
 insuranceClaimSchema.pre('save', async function (next) {
   if (this.claimNo) return next();

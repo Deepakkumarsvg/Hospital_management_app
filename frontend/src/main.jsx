@@ -4,7 +4,13 @@ import App from './App.jsx';
 import { ThemeProvider } from './context/ThemeContext.jsx';
 import { AuthProvider } from './context/AuthContext.jsx';
 import { ToastProvider } from './context/ToastContext.jsx';
+import { initErrorReporting } from './services/errorReporting.js';
 import './index.css';
+
+// Before the first render, so a crash during that render is still reported.
+// Not awaited: the app must not wait on telemetry to paint, and the global
+// handlers this installs are in place synchronously.
+initErrorReporting();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

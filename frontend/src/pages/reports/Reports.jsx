@@ -55,7 +55,9 @@ function Tile({ label, value, icon: Icon, delta, onClick }) {
 // Monochrome ink ramp (decreasing opacity) — matches the app's black & white
 // system instead of introducing hue, and flips correctly with the theme
 // since --fg itself is theme-aware.
-const INK_RAMP = [95, 78, 63, 50, 38, 28, 20].map((a) => `rgb(var(--fg) / ${a}%)`);
+// Descending strengths of the accent. In dark mode --accent is the near-white
+// it always was, so this is unchanged there; in light it becomes the brand hue.
+const INK_RAMP = [95, 78, 63, 50, 38, 28, 20].map((a) => `rgb(var(--accent) / ${a}%)`);
 
 // Status colors are reserved (never reused as generic series colors) and
 // mirror the same tone→hex used elsewhere via the Badge component, so a
@@ -190,7 +192,7 @@ export default function Reports() {
           {RANGE_PRESETS.map((p) => (
             <button key={p.key} onClick={() => applyPreset(p)}
               className={'rounded-full border px-3 py-1 text-xs font-medium transition-colors ' +
-                (activePreset === p.key ? 'border-fg bg-fg text-bg' : 'border-border text-muted hover:text-fg hover:bg-surface')}>
+                (activePreset === p.key ? 'border-accent bg-accent text-accent-fg' : 'border-border text-muted hover:text-fg hover:bg-surface')}>
               {p.label}
             </button>
           ))}

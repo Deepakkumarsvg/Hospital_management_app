@@ -1,5 +1,5 @@
 import { OperationTheatre } from '../models/OperationTheatre.js';
-import { Surgery, SURGERY_TRANSITIONS } from '../models/Surgery.js';
+import { Surgery, SURGERY_TRANSITIONS, surgerySlots } from '../models/Surgery.js';
 import { Patient } from '../models/Patient.js';
 import { Doctor } from '../models/Doctor.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -54,33 +54,36 @@ export async function getSurgery(id) {
 }
 
 // A theatre can only host one active (SCHEDULED/IN_PROGRESS) surgery at a
-// time — reject a booking whose [start, start+duration) window overlaps an
-// existing one in the same theatre.
+// time. The overlap test is expressed as "do these two surgeries share a time
+// bucket", which is exactly what the unique index on the model enforces — so
+// this check and the index can never disagree and reject different bookings.
 async function assertNoConflict({ theatre, scheduledDate, scheduledTime, estimatedDuration }, excludeId) {
   if (!theatre || !scheduledDate) return;
-  const [h, m] = (scheduledTime || '00:00').split(':').map(Number);
-  const start = new Date(scheduledDate);
-  start.setHours(h || 0, m || 0, 0, 0);
-  const end = new Date(start.getTime() + (estimatedDuration || 120) * 60000);
-  const dayStart = new Date(start); dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(start); dayEnd.setHours(23, 59, 59, 999);
+  const slots = surgerySlots({ scheduledDate, scheduledTime, estimatedDuration });
+  if (!slots.length) return;
 
   const filter = {
     theatre,
     status: { $in: ['SCHEDULED', 'IN_PROGRESS'] },
-    scheduledDate: { $gte: dayStart, $lte: dayEnd },
+    slots: { $in: slots },
   };
   if (excludeId) filter._id = { $ne: excludeId };
 
-  const sameDay = await Surgery.find(filter).select('scheduledTime estimatedDuration surgeryNo');
-  for (const other of sameDay) {
-    const [oh, om] = (other.scheduledTime || '00:00').split(':').map(Number);
-    const oStart = new Date(start); oStart.setHours(oh || 0, om || 0, 0, 0);
-    const oEnd = new Date(oStart.getTime() + (other.estimatedDuration || 120) * 60000);
-    if (start < oEnd && oStart < end) {
-      throw ApiError.badRequest(`Theatre is already booked for ${other.surgeryNo} at that time`, 'THEATRE_CONFLICT');
-    }
+  const clash = await Surgery.findOne(filter).select('surgeryNo');
+  if (clash) {
+    throw ApiError.badRequest(`Theatre is already booked for ${clash.surgeryNo} at that time`, 'THEATRE_CONFLICT');
   }
+}
+
+// The check above can't close the gap between its read and the write — two
+// simultaneous bookings both pass it. The unique slot index does close it;
+// this turns the resulting duplicate-key error back into the same conflict the
+// caller would have got from assertNoConflict.
+function rethrowTheatreClash(err) {
+  if (err?.code === 11000 && err.keyPattern?.slots) {
+    throw ApiError.badRequest('Theatre is already booked at that time', 'THEATRE_CONFLICT');
+  }
+  throw err;
 }
 
 export async function createSurgery(data, userId) {
@@ -92,7 +95,7 @@ export async function createSurgery(data, userId) {
   if (!surgeon) throw ApiError.badRequest('Surgeon does not exist', 'DOCTOR_NOT_FOUND');
   await assertNoConflict(data);
   const s = new Surgery({ ...data, createdBy: userId });
-  await s.save();
+  await s.save().catch(rethrowTheatreClash);
   return s.populate(POPULATE);
 }
 export async function updateSurgery(id, data) {
@@ -108,7 +111,7 @@ export async function updateSurgery(id, data) {
     }, id);
   }
   Object.assign(s, data);
-  await s.save();
+  await s.save().catch(rethrowTheatreClash);
   return s.populate(POPULATE);
 }
 export async function changeStatus(id, next) {

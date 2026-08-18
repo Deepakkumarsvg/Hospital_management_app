@@ -35,9 +35,12 @@ export default function NewInvoice({ open, onClose, onCreated, presetPatient }) 
   const addSuggested = () => {
     setLines((prev) => {
       const base = prev.filter((l) => l.description.trim());
+      // sourceType/sourceId/sourceKey are what stop a charge being billed
+      // twice — they have to survive the trip back to the server, or the same
+      // bed night keeps being suggested after it has already been invoiced.
       return [...base, ...suggestions.map((s) => ({
-        category: s.category, description: s.description, quantity: 1, unitPrice: s.unitPrice,
-        sourceType: s.sourceType, sourceId: s.sourceId,
+        category: s.category, description: s.description, quantity: s.quantity || 1, unitPrice: s.unitPrice,
+        sourceType: s.sourceType, sourceId: s.sourceId, sourceKey: s.sourceKey,
       }))];
     });
     toast.success(`Added ${suggestions.length} charge${suggestions.length === 1 ? '' : 's'}`);
@@ -55,7 +58,7 @@ export default function NewInvoice({ open, onClose, onCreated, presetPatient }) 
     const items = lines.filter((l) => l.description.trim() && Number(l.unitPrice) >= 0)
       .map((l) => ({
         category: l.category, description: l.description, quantity: Number(l.quantity) || 1, unitPrice: Number(l.unitPrice) || 0,
-        sourceType: l.sourceType || undefined, sourceId: l.sourceId || undefined,
+        sourceType: l.sourceType || undefined, sourceId: l.sourceId || undefined, sourceKey: l.sourceKey || undefined,
       }));
     if (items.length === 0) er.items = 'Add at least one line item';
     setErrors(er);
@@ -81,7 +84,7 @@ export default function NewInvoice({ open, onClose, onCreated, presetPatient }) 
 
         {suggestions.length > 0 && (
           <button type="button" onClick={addSuggested} className="flex w-full items-center gap-2 rounded-lg border border-dashed border-border bg-surface px-3 py-2 text-sm text-muted hover:text-fg">
-            <Sparkles className="h-4 w-4" /> Add {suggestions.length} suggested charge{suggestions.length === 1 ? '' : 's'} from lab / radiology / pharmacy
+            <Sparkles className="h-4 w-4" /> Add {suggestions.length} unbilled charge{suggestions.length === 1 ? '' : 's'} — consultation, bed, lab, radiology, pharmacy, theatre, blood &amp; ambulance
           </button>
         )}
 

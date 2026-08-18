@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { register } from "../db/registry.js";
 import { tenantModel } from "../db/tenantModel.js";
 import { Counter } from './Counter.js';
+import { paiseField, toJSONRupees } from '../utils/money.js';
 
 export const PAYMENT_METHODS = ['CASH', 'CARD', 'UPI', 'BANK_TRANSFER', 'INSURANCE', 'ONLINE'];
 export const PAYMENT_TYPES = ['PAYMENT', 'REFUND'];
@@ -13,7 +14,8 @@ const paymentSchema = new mongoose.Schema(
     patient: { type: mongoose.Schema.Types.ObjectId, ref: 'Patient', required: true, index: true },
     // `amount` is always stored positive — `type` says which direction it
     // moves the invoice's paidAmount (PAYMENT adds, REFUND subtracts).
-    amount: { type: Number, min: 0, required: true },
+    // Paise, like every other amount. See utils/money.js.
+    amount: paiseField({ required: true }),
     type: { type: String, enum: PAYMENT_TYPES, default: 'PAYMENT' },
     method: { type: String, enum: PAYMENT_METHODS, default: 'CASH' },
     transactionId: { type: String, trim: true, default: '' },
@@ -22,6 +24,9 @@ const paymentSchema = new mongoose.Schema(
   },
   { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
+
+// The wire format is rupees — storage is the only thing that changed.
+paymentSchema.set('toJSON', { virtuals: true, transform: toJSONRupees(['amount']) });
 
 // A gateway payment id may only ever be banked once. The client's verify call
 // and Razorpay's webhook routinely both arrive for the same payment; without

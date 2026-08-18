@@ -14,27 +14,23 @@ import Badge from '../components/ui/Badge.jsx';
 import { PageSkeleton } from '../components/ui/Skeleton.jsx';
 import EmptyState from '../components/ui/EmptyState.jsx';
 import DoctorDashboard from './DoctorDashboard.jsx';
-import { getPatientStats } from '../services/patientService.js';
-import { getAppointmentStats, listAppointments } from '../services/appointmentService.js';
-import { getDoctorStats } from '../services/doctorService.js';
-import { getOpdStats } from '../services/opdService.js';
-import { getIpdStats } from '../services/ipdService.js';
-import { getLabStats } from '../services/labService.js';
-import { getPharmacyStats } from '../services/pharmacyService.js';
-import { getBillingStats } from '../services/billingService.js';
-import { getStock as getBloodStock } from '../services/bloodBankService.js';
-import { getReportSummary } from '../services/reportService.js';
-import { navForRole } from '../utils/navigation.js';
-import { money, toDateInput, APPOINTMENT_STATUS_META } from '../utils/constants.js';
+import { getDashboard } from '../services/reportService.js';
+import { navFor } from '../utils/navigation.js';
+import { money, APPOINTMENT_STATUS_META } from '../utils/constants.js';
 
 // Monochrome palette to match the black & white system.
-const PIE_SHADES = ['#171717', '#525252', '#a3a3a3', '#d4d4d4', '#e5e5e5'];
+// One hue at descending strength rather than five unrelated colours: the
+// slices of a single measure are the same kind of thing, so shade carries the
+// distinction and the chart still reads correctly in greyscale or print.
+// Built from --accent, so it is blue in light and white in dark automatically.
+const PIE_SHADES = [92, 74, 56, 40, 26].map((a) => `rgb(var(--accent) / ${a}%)`);
 
 // Reads a CSS var so chart strokes flip with the theme.
-function useAxisColor() {
-  if (typeof window === 'undefined') return '#888';
-  return document.documentElement.classList.contains('dark') ? '#a3a3a3' : '#737373';
-}
+// Axes and gridlines stay neutral on purpose — the accent is reserved for the
+// data itself, so the chrome never competes with the series. Resolved by the
+// browser from the theme variable, which means a theme toggle recolours them
+// immediately without a re-render.
+const AXIS = 'rgb(var(--muted))';
 
 const ChartTooltip = {
   contentStyle: {
@@ -53,7 +49,11 @@ function StatCard({ label, value, icon: Icon }) {
         <p className="truncate text-sm text-muted">{label}</p>
         <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
       </div>
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface">
+      {/* Tinted rather than grey: nine identical neutral tiles gave the eye
+          nothing to land on, and the icon is the only thing distinguishing one
+          card from the next. A wash of the accent at 10% keeps it quiet enough
+          that the number still leads. */}
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-accent/15 bg-accent/10 text-accent">
         <Icon className="h-5 w-5" />
       </span>
     </Card>
@@ -67,32 +67,42 @@ async function settle(fn) {
 }
 
 export default function Dashboard() {
-  const { user, role } = useAuth();
+  const { user, role, can } = useAuth();
   const navigate = useNavigate();
-  const axis = useAxisColor();
   const [data, setData] = useState(null);
 
   useEffect(() => {
     if (role === 'DOCTOR') return; // doctor gets its own dashboard
     let active = true;
-    const today = toDateInput(new Date().toISOString());
 
     (async () => {
-      const [patients, appt, doctors, opd, ipd, lab, pharmacy, billing, blood, summary, todayAppts] = await Promise.all([
-        settle(getPatientStats),
-        settle(getAppointmentStats),
-        settle(getDoctorStats),
-        settle(getOpdStats),
-        settle(getIpdStats),
-        settle(getLabStats),
-        settle(getPharmacyStats),
-        settle(getBillingStats),
-        settle(getBloodStock),
-        settle(getReportSummary), // richest source (revenue trend, bed occupancy) — ADMIN/ACCOUNTANT/SUPER_ADMIN only
-        settle(() => listAppointments({ date: today, limit: 6 }).then((r) => r.items)),
-      ]);
+      // One request for the whole page. This used to be eleven parallel calls —
+      // one per module's stats endpoint — each of which re-authenticated,
+      // re-resolved the tenant and fanned out its own queries, with most of the
+      // results thrown away for roles that couldn't see them. The server now
+      // assembles only the sections this caller is allowed, so a section being
+      // absent still means "no access", exactly as before.
+      const d = await settle(getDashboard);
       if (!active) return;
-      setData({ patients, appt, doctors, opd, ipd, lab, pharmacy, billing, blood, summary, todayAppts });
+
+      setData(d && {
+        patients: d.patients,
+        appt: d.appointments && { today: d.appointments.today, total: d.appointments.total },
+        doctors: d.doctors,
+        opd: d.opd,
+        ipd: d.ipd,
+        lab: d.lab,
+        pharmacy: d.pharmacy,
+        billing: d.billing,
+        blood: d.blood,
+        todayAppts: d.appointments?.upcoming || null,
+        // Kept in the shape the charts below already read.
+        summary: (d.beds || d.billing || d.appointments) && {
+          beds: d.beds,
+          revenue: { trend: d.billing?.trend || [] },
+          breakdowns: { appointments: d.appointments?.breakdown || [] },
+        },
+      });
     })();
 
     return () => { active = false; };
@@ -118,12 +128,15 @@ export default function Dashboard() {
     billing && { label: 'Revenue Collected', value: money(billing.collected), icon: IndianRupee },
   ].filter(Boolean);
 
-  const bedData = summary
+  // Each section is granted independently now, so a caller can have revenue
+  // without beds. Guard on the section itself rather than on `summary`.
+  const beds = summary?.beds;
+  const bedData = beds
     ? [
-        { name: 'Occupied', value: summary.beds.occupied },
-        { name: 'Available', value: summary.beds.available },
-        { name: 'Reserved', value: summary.beds.reserved },
-        { name: 'Maintenance', value: summary.beds.maintenance },
+        { name: 'Occupied', value: beds.occupied },
+        { name: 'Available', value: beds.available },
+        { name: 'Reserved', value: beds.reserved },
+        { name: 'Maintenance', value: beds.maintenance },
       ].filter((d) => d.value > 0)
     : [];
 
@@ -133,7 +146,7 @@ export default function Dashboard() {
       count: r.count,
     })) || [];
 
-  const quickLinks = navForRole(role).filter((i) => !['Dashboard', 'Settings'].includes(i.label) && !i.todo).slice(0, 8);
+  const quickLinks = navFor({ can, isSuperAdmin: role === 'SUPER_ADMIN' }).filter((i) => !['Dashboard', 'Settings'].includes(i.label) && !i.todo).slice(0, 8);
 
   return (
     <div className="space-y-6">
@@ -233,9 +246,12 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Analytics — richer real-data charts, visible to ADMIN / ACCOUNTANT / SUPER_ADMIN */}
-      {summary && (
+      {/* Analytics. Each card is granted independently — finance sees the
+          collection trend, clinical staff see bed occupancy, and whoever has
+          both sees both. */}
+      {(billing || beds || apptBreakdown.length > 0) && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {billing && (
           <Card className="lg:col-span-2">
             <div className="mb-4 flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-muted" />
@@ -249,26 +265,28 @@ export default function Dashboard() {
                   <AreaChart data={summary.revenue.trend} margin={{ left: -20, right: 8, top: 8 }}>
                     <defs>
                       <linearGradient id="rev" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={axis} stopOpacity={0.4} />
-                        <stop offset="100%" stopColor={axis} stopOpacity={0} />
+                        <stop offset="0%" stopColor="rgb(var(--accent))" stopOpacity={0.28} />
+                        <stop offset="100%" stopColor="rgb(var(--accent))" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={axis} strokeOpacity={0.15} />
-                    <XAxis dataKey="date" stroke={axis} fontSize={11} tickLine={false} tickFormatter={(v) => v.slice(5)} minTickGap={24} />
-                    <YAxis stroke={axis} fontSize={12} tickLine={false} />
+                    <CartesianGrid strokeDasharray="3 3" stroke={AXIS} strokeOpacity={0.15} />
+                    <XAxis dataKey="date" stroke={AXIS} fontSize={11} tickLine={false} tickFormatter={(v) => v.slice(5)} minTickGap={24} />
+                    <YAxis stroke={AXIS} fontSize={12} tickLine={false} />
                     <Tooltip {...ChartTooltip} formatter={(v) => money(v)} />
-                    <Area type="monotone" dataKey="amount" stroke={axis} strokeWidth={2} fill="url(#rev)" />
+                    <Area type="monotone" dataKey="amount" stroke="rgb(var(--accent))" strokeWidth={2} fill="url(#rev)" />
                   </AreaChart>
                 </ResponsiveContainer>
               )}
             </div>
           </Card>
+          )}
 
+          {beds && (
           <Card>
             <div className="mb-4 flex items-center gap-2">
               <BedDouble className="h-4 w-4 text-muted" />
               <h2 className="text-sm font-semibold">Bed Occupancy</h2>
-              <span className="ml-auto text-xs text-muted">{summary.beds.occupancyRate}% full</span>
+              <span className="ml-auto text-xs text-muted">{beds.occupancyRate}% full</span>
             </div>
             <div className="h-64">
               {bedData.length === 0 ? (
@@ -288,28 +306,27 @@ export default function Dashboard() {
               )}
             </div>
           </Card>
+          )}
 
+          {apptBreakdown.length > 0 && (
           <Card className="lg:col-span-3">
             <div className="mb-4 flex items-center gap-2">
               <ClipboardList className="h-4 w-4 text-muted" />
               <h2 className="text-sm font-semibold">Appointment Status Breakdown</h2>
             </div>
             <div className="h-64">
-              {apptBreakdown.length === 0 ? (
-                <EmptyState title="No appointments yet" description="Status breakdown will appear once appointments are booked." />
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={apptBreakdown} margin={{ left: -20, right: 8, top: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke={axis} strokeOpacity={0.15} />
-                    <XAxis dataKey="status" stroke={axis} fontSize={12} tickLine={false} />
-                    <YAxis stroke={axis} fontSize={12} tickLine={false} allowDecimals={false} />
-                    <Tooltip {...ChartTooltip} cursor={{ fill: axis, fillOpacity: 0.08 }} />
-                    <Bar dataKey="count" name="Appointments" fill="#171717" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={apptBreakdown} margin={{ left: -20, right: 8, top: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={AXIS} strokeOpacity={0.15} />
+                  <XAxis dataKey="status" stroke={AXIS} fontSize={12} tickLine={false} />
+                  <YAxis stroke={AXIS} fontSize={12} tickLine={false} allowDecimals={false} />
+                  <Tooltip {...ChartTooltip} cursor={{ fill: AXIS, fillOpacity: 0.08 }} />
+                  <Bar dataKey="count" name="Appointments" fill="rgb(var(--accent) / 85%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </Card>
+          )}
         </div>
       )}
     </div>

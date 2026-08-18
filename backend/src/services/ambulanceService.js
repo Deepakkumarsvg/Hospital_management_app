@@ -3,6 +3,7 @@ import { AmbulanceTrip, TRIP_STATUSES } from '../models/AmbulanceTrip.js';
 import { Patient } from '../models/Patient.js';
 import { ApiError } from '../utils/ApiError.js';
 import { notify } from './notificationService.js';
+import { cappedIds, escapeRegex } from './searchFilters.js';
 
 export const listAmbulances = () => Ambulance.find().sort({ vehicleNo: 1 });
 export const createAmbulance = (data) => Ambulance.create(data);
@@ -34,19 +35,21 @@ export async function deleteAmbulance(id) {
 const TRIP_POPULATE = [{ path: 'ambulance', select: 'vehicleNo type' }, { path: 'patient', select: 'uhid firstName lastName' }];
 
 async function tripSearchFilter(search) {
-  if (!search) return {};
-  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+  const term = String(search || '').trim();
+  if (!term) return {};
+  const rx = new RegExp(escapeRegex(term), 'i');
+
+  // Capped, so a one-letter search cannot load every vehicle and patient into
+  // memory to build an $in out of. See services/searchFilters.js.
   const [ambulances, patients] = await Promise.all([
-    Ambulance.find({ vehicleNo: rx }).select('_id'),
-    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
+    cappedIds(Ambulance, ['vehicleNo'], term),
+    cappedIds(Patient, ['firstName', 'lastName', 'uhid'], term),
   ]);
-  return {
-    $or: [
-      { tripNo: rx }, { patientName: rx },
-      { ambulance: { $in: ambulances.map((a) => a._id) } },
-      { patient: { $in: patients.map((p) => p._id) } },
-    ],
-  };
+
+  const or = [{ tripNo: rx }, { patientName: rx }];
+  if (ambulances.length) or.push({ ambulance: { $in: ambulances } });
+  if (patients.length) or.push({ patient: { $in: patients } });
+  return { $or: or };
 }
 
 export async function listTrips({ page, limit, search, status, ambulance }) {

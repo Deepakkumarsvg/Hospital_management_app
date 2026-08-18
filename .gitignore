@@ -14,6 +14,12 @@ build/
 .env.*.local
 .env.development
 .env.production
+# A developer's own login to a live hospital, used by scripts/fetch-errors.mjs.
+.env.errors
+
+# MongoDB replica-set key file — a shared secret, generated per deployment by
+# scripts/mongo-keyfile.sh. Back it up with the database; never commit it.
+secrets/
 
 # Uploaded files / user data (local storage driver)
 backend/uploads/
@@ -42,3 +48,8 @@ Thumbs.db
 # Misc
 .cache/
 tmp/
+
+# Errors pulled from production by `npm run errors`. A snapshot of a live
+# hospital — stack traces, request ids, who hit what — that is stale within
+# minutes. Re-run the command; never commit the output.
+.errors/

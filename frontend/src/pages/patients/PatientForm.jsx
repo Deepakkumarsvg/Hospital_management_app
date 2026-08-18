@@ -8,6 +8,7 @@ import Button from '../../components/ui/Button.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import { createPatient, updatePatient } from '../../services/patientService.js';
+import { activePlans } from '../../services/tariffService.js';
 import {
   GENDER_OPTIONS, BLOOD_GROUP_OPTIONS, PATIENT_STATUS_OPTIONS, toDateInput,
 } from '../../utils/constants.js';
@@ -19,6 +20,7 @@ const EMPTY = {
   emergencyContact: { name: '', relation: '', phone: '' },
   allergies: '', medicalHistory: '',
   insurances: [],
+  tariffPlan: '',
   status: 'ACTIVE',
 };
 
@@ -46,6 +48,11 @@ export default function PatientForm({ open, onClose, patient, onSaved }) {
 
   const { fields: policyFields, append: addPolicy, remove: removePolicy } = useFieldArray({ control, name: 'insurances' });
 
+  // Reception can read the price lists but not edit them, so this is a plain
+  // fetch — an empty list just means none have been set up yet.
+  const [plans, setPlans] = useState([]);
+  useEffect(() => { activePlans().then(setPlans).catch(() => setPlans([])); }, []);
+
   // Populate when opening for edit; reset to blank for create.
   useEffect(() => {
     if (!open) return;
@@ -57,6 +64,7 @@ export default function PatientForm({ open, onClose, patient, onSaved }) {
         address: { ...EMPTY.address, ...(patient.address || {}) },
         emergencyContact: { ...EMPTY.emergencyContact, ...(patient.emergencyContact || {}) },
         insurances: (patient.insurances || []).map((p) => ({ ...BLANK_POLICY, ...p, validTill: toDateInput(p.validTill) })),
+        tariffPlan: patient.tariffPlan || '',
       });
     } else {
       reset(EMPTY);
@@ -80,6 +88,7 @@ export default function PatientForm({ open, onClose, patient, onSaved }) {
       insurances: (values.insurances || [])
         .filter((p) => p.provider || p.policyNumber || p.validTill)
         .map((p) => (p.validTill ? p : { ...p, validTill: undefined })),
+      tariffPlan: values.tariffPlan || null,
     };
 
     try {
@@ -182,6 +191,21 @@ export default function PatientForm({ open, onClose, patient, onSaved }) {
             placeholder="Chronic conditions, past surgeries, ongoing medication…"
             {...register('medicalHistory')}
           />
+        </div>
+
+        <div className="col-span-full mt-2">
+          <Select
+            id="tariffPlan"
+            label="Price list"
+            {...register('tariffPlan')}
+            options={[
+              { value: '', label: 'House default' },
+              ...plans.map((pl) => ({ value: pl.id || pl._id, label: pl.name })),
+            ]}
+          />
+          <p className="mt-1 text-xs text-muted">
+            Which payer's rates this patient is billed at — CGHS, a corporate contract, a TPA panel.
+          </p>
         </div>
 
         <div className="col-span-full mt-2 flex items-center justify-between">

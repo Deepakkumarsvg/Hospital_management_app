@@ -1,3 +1,4 @@
+import { cappedIds, escapeRegex } from './searchFilters.js';
 import { InventoryItem } from '../models/InventoryItem.js';
 import { InventoryItemBatch } from '../models/InventoryItemBatch.js';
 import { Vendor } from '../models/Vendor.js';
@@ -231,9 +232,10 @@ export async function listPurchaseOrders({ page, limit, search, status, vendor }
   if (status && status !== 'ALL') filter.status = status;
   if (vendor) filter.vendor = vendor;
   if (search) {
-    const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-    const vendors = await Vendor.find({ name: rx }).select('_id');
-    filter.$or = [{ poNo: rx }, { vendor: { $in: vendors.map((v) => v._id) } }];
+    const rx = new RegExp(escapeRegex(search), 'i');
+    // Capped — see services/searchFilters.js.
+    const vendors = await cappedIds(Vendor, ['name'], search);
+    filter.$or = vendors.length ? [{ poNo: rx }, { vendor: { $in: vendors } }] : [{ poNo: rx }];
   }
   const [items, total] = await Promise.all([
     PurchaseOrder.find(filter).populate(PO_POPULATE).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),

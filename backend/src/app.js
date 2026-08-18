@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import express from 'express';
+import cookieParser from 'cookie-parser';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
@@ -8,7 +9,9 @@ import { env } from './config/env.js';
 import routes from './routes/index.js';
 import { resolveTenant, tenantScope } from './middleware/tenant.js';
 import { notFoundHandler, errorHandler } from './middleware/errorHandler.js';
+import { slowRequestMonitor } from './middleware/perf.js';
 import { findFrontendBuild, inlineScriptHashes, mountStaticSite } from './staticSite.js';
+import { rateLimitStore } from './config/rateLimitStore.js';
 
 export function createApp() {
   const app = express();
@@ -79,28 +82,45 @@ export function createApp() {
   );
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
+  // The refresh token travels as an httpOnly cookie, out of reach of page
+  // script — see controllers/authController.js.
+  app.use(cookieParser());
 
   // Broad backstop against a single client hammering the API. Auth and other
   // sensitive endpoints set their own, much tighter budgets on top of this.
   //
-  // NOTE: this is an in-memory store, so the budget is per process and resets
-  // on restart. Running more than one API instance needs a shared store
-  // (rate-limit-redis) for the limits to mean anything.
+  // The counters live in Redis when REDIS_URL is set, and in process memory
+  // otherwise. Memory is correct for one instance; with several it silently
+  // multiplies every limit by the instance count, so the boot log says so
+  // out loud (see config/rateLimitStore.js).
   app.use(
     '/api',
     rateLimit({
       windowMs: 15 * 60 * 1000,
-      max: 500,
+      max: Number(process.env.RATE_LIMIT_MAX) || 500,
+      // Shared across instances when REDIS_URL is set; per-process otherwise.
+      store: rateLimitStore('api'),
       standardHeaders: true,
       legacyHeaders: false,
       // Health checks come from the orchestrator on a fixed address and would
       // otherwise eat the budget that address shares with real traffic.
-      skip: (req) => req.path === '/health',
+      //
+      // The whole test suite also runs as a single client, and a suite that
+      // exercises hundreds of endpoints would otherwise start failing on 429
+      // rather than on anything it meant to assert.
+      skip: (req) => req.path === '/health' || process.env.NODE_ENV === 'test',
     })
   );
 
   // Resolve tenant + bind its DB connection into async context before any route.
-  app.use('/api', resolveTenant, tenantScope, routes);
+  //
+  // slowRequestMonitor sits INSIDE that context deliberately. It measures on
+  // the response's 'finish' event, and the tenant connection reaches that
+  // callback through AsyncLocalStorage — which propagates to listeners
+  // registered while the context is active, and not to ones registered before
+  // it. Mounted above tenantScope it would still time every request and have
+  // nowhere to write the slow ones.
+  app.use('/api', resolveTenant, tenantScope, slowRequestMonitor, routes);
 
   // Serve the built frontend, when there is one (single-service deployment).
   // Mounted after the API so /api always wins, and before the 404 handler so

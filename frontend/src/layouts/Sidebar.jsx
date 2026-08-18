@@ -1,12 +1,12 @@
 import { NavLink } from 'react-router-dom';
 import { Activity, X, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
-import { groupedNavForRole } from '../utils/navigation.js';
+import { groupedNavFor } from '../utils/navigation.js';
 import { cn } from '../utils/cn.js';
 
 export default function Sidebar({ open, onClose, collapsed, onToggleCollapse }) {
-  const { role } = useAuth();
-  const groups = groupedNavForRole(role);
+  const { can, role } = useAuth();
+  const groups = groupedNavFor({ can, isSuperAdmin: role === 'SUPER_ADMIN' });
 
   return (
     <>

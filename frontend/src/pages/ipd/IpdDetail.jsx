@@ -9,6 +9,9 @@ import Select from '../../components/ui/Select.jsx';
 import Modal from '../../components/ui/Modal.jsx';
 import { PageSkeleton } from '../../components/ui/Skeleton.jsx';
 import ConfirmDialog from '../../components/ui/ConfirmDialog.jsx';
+import VitalsChart from '../clinical/VitalsChart.jsx';
+import ClinicalNotes from '../clinical/ClinicalNotes.jsx';
+import MedicationChart from '../clinical/MedicationChart.jsx';
 import { useAuth } from '../../context/AuthContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
 import {
@@ -23,7 +26,14 @@ function Field({ label, value }) {
   return <div><p className="text-xs uppercase tracking-wide text-muted">{label}</p><p className="mt-0.5 text-sm">{value || '—'}</p></div>;
 }
 
+const CHART_TABS = [
+  { key: 'vitals', label: 'Observations' },
+  { key: 'notes', label: 'Notes' },
+  { key: 'mar', label: 'Drug chart' },
+];
+
 export default function IpdDetail() {
+  const [chartTab, setChartTab] = useState('vitals');
   const { id } = useParams();
   const navigate = useNavigate();
   const { role } = useAuth();
@@ -125,12 +135,12 @@ export default function IpdDetail() {
           <h2 className="mb-4 flex items-center gap-2 text-sm font-semibold"><StickyNote className="h-4 w-4" /> Nursing Notes</h2>
           {active && canNurse && (
             <form onSubmit={submitNote} className="mb-4 flex gap-2">
-              <input className="input flex-1" placeholder="Add a nursing note…" value={note} onChange={(e) => setNote(e.target.value)} />
+              <input className="input flex-1" placeholder="Add a quick nursing note…" value={note} onChange={(e) => setNote(e.target.value)} />
               <Button type="submit" loading={noteSaving} className="!px-3"><Send className="h-4 w-4" /></Button>
             </form>
           )}
           {adm.nursingNotes.length === 0 ? (
-            <p className="text-sm text-muted">No notes yet.</p>
+            <p className="text-sm text-muted">No quick notes. Use the chart below for anything that belongs in the record.</p>
           ) : (
             <ul className="space-y-3">
               {[...adm.nursingNotes].reverse().map((n) => (
@@ -143,6 +153,30 @@ export default function IpdDetail() {
           )}
         </Card>
       </div>
+
+      {/* The chart proper: observations over time, the notes that form the
+          legal record, and what was actually given. Tabbed rather than stacked
+          because a ward round reads one of the three at a time. */}
+      <Card className="!p-0">
+        <div className="flex border-b border-border">
+          {CHART_TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => setChartTab(t.key)}
+              className={`px-4 py-3 text-sm transition ${
+                chartTab === t.key ? 'border-b-2 border-fg font-medium' : 'text-muted hover:text-fg'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <div className="p-4">
+          {chartTab === 'vitals' && <VitalsChart encounter={adm.id || adm._id} patient={adm.patient?._id || adm.patient?.id} />}
+          {chartTab === 'notes' && <ClinicalNotes encounter={adm.id || adm._id} patient={adm.patient?._id || adm.patient?.id} />}
+          {chartTab === 'mar' && <MedicationChart encounter={adm.id || adm._id} patient={adm.patient?._id || adm.patient?.id} />}
+        </div>
+      </Card>
 
       {transferOpen && <TransferModal admission={adm} onClose={() => setTransferOpen(false)} onSaved={(a) => { setAdm(a); }} />}
       {dischargeOpen && <DischargeModal admission={adm} onClose={() => setDischargeOpen(false)} onSaved={(a) => { setAdm(a); }} />}

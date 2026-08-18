@@ -12,6 +12,9 @@ export const updateSettingSchema = z.object({
   website: z.string().trim().max(120).optional(),
   registrationNo: z.string().trim().max(60).optional(),
   gstin: z.string().trim().max(30).optional(),
+  // Two digits, per the GST state-code list. Blank is allowed and means "derive
+  // it from the GSTIN", whose first two digits are exactly this.
+  stateCode: z.union([z.literal(''), z.string().trim().regex(/^\d{2}$/, 'State code must be two digits')]).optional(),
   currency: z.string().trim().max(4).optional(),
   defaultTaxPercent: z.coerce.number().min(0).max(100).optional(),
   invoiceFooter: z.string().trim().max(300).optional(),

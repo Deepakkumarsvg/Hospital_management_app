@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { zodPaise } from '../utils/money.js';
 import { ATTENDANCE_STATUSES } from '../models/Attendance.js';
 import { LEAVE_TYPES, LEAVE_STATUSES } from '../models/Leave.js';
 import { PAYSLIP_STATUSES } from '../models/Payslip.js';
@@ -124,6 +125,6 @@ export const exportPayslipsQuerySchema = z.object({
   format: z.enum(['csv', 'xlsx']).optional().default('csv'),
 });
 export const adjustPayslipSchema = z.object({
-  adjustment: z.coerce.number(),
+  adjustment: zodPaise(z.coerce.number()),
   adjustmentNote: z.string().trim().max(300).optional(),
 });

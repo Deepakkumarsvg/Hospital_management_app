@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Search, Check, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { listPatients } from '../../services/patientService.js';
 
 // Searchable patient selector. Calls back with the chosen patient object.

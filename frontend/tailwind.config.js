@@ -5,7 +5,7 @@ export default {
   theme: {
     extend: {
       colors: {
-        // Black & white design system driven by CSS variables so the
+        // Design system driven by CSS variables so the
         // exact same class names flip cleanly between light and dark.
         bg: 'rgb(var(--bg) / <alpha-value>)',
         surface: 'rgb(var(--surface) / <alpha-value>)',
@@ -15,6 +15,10 @@ export default {
         muted: 'rgb(var(--muted) / <alpha-value>)',
         accent: 'rgb(var(--accent) / <alpha-value>)',
         'accent-fg': 'rgb(var(--accent-fg) / <alpha-value>)',
+        // Focus indicator. Its own token because it follows the accent in
+        // light and the text colour in dark — a ring is about being visible
+        // against the field it surrounds, not about brand.
+        ring: 'rgb(var(--ring) / <alpha-value>)',
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],

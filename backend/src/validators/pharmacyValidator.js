@@ -35,10 +35,21 @@ export const dispenseSchema = z.object({
   })).min(1, 'Add at least one medicine'),
 });
 
-export const adjustStockSchema = z.object({
-  delta: z.coerce.number().int().refine((v) => v !== 0, 'Delta cannot be zero'),
-  reason: z.string().trim().min(2, 'Reason is required').max(200),
-});
+// Adding stock back has to say *which* batch it belongs to. Medicine that
+// can't be traced to a batch has no expiry date, and stock with no expiry date
+// cannot lawfully be dispensed — so a bare "+50" is not an answer the pharmacy
+// is allowed to give. Taking stock away needs no batch: it is drawn down FEFO.
+export const adjustStockSchema = z
+  .object({
+    delta: z.coerce.number().int().refine((v) => v !== 0, 'Delta cannot be zero'),
+    reason: z.string().trim().min(2, 'Reason is required').max(200),
+    batchNo: z.string().trim().max(60).optional(),
+    expiryDate: z.coerce.date().optional(),
+  })
+  .refine((v) => v.delta < 0 || !!v.batchNo, {
+    message: 'Adding stock requires the batch number it belongs to',
+    path: ['batchNo'],
+  });
 
 export const listMedicinesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

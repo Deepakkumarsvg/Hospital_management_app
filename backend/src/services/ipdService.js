@@ -1,3 +1,4 @@
+import { buildSearchFilter } from './searchFilters.js';
 import { IPDAdmission } from '../models/IPDAdmission.js';
 import { Bed } from '../models/Bed.js';
 import { Patient } from '../models/Patient.js';
@@ -14,23 +15,11 @@ const POPULATE = [
   { path: 'nursingNotes.by', select: 'name role' },
 ];
 
-// Admission number is searchable directly, but patient/doctor are refs —
-// resolve matching ids first so a name/UHID search actually finds admissions.
-async function searchFilter(search) {
-  if (!search) return {};
-  const rx = new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
-  const [patients, doctors] = await Promise.all([
-    Patient.find({ $or: [{ firstName: rx }, { lastName: rx }, { uhid: rx }] }).select('_id'),
-    Doctor.find({ $or: [{ firstName: rx }, { lastName: rx }] }).select('_id'),
-  ]);
-  return {
-    $or: [
-      { admissionNo: rx },
-      { patient: { $in: patients.map((p) => p._id) } },
-      { admittingDoctor: { $in: doctors.map((d) => d._id) } },
-    ],
-  };
-}
+// Admission number is searchable directly, but patient/doctor are refs — the
+// shared helper resolves those, with a cap so a broad term cannot pull the
+// whole patient list into memory. See services/searchFilters.js.
+const searchFilter = (search) =>
+  buildSearchFilter(search, ['admissionNo'], { patient: true, doctor: 'admittingDoctor' });
 
 export async function listAdmissions({ page, limit, search, status, patient }) {
   const filter = {};
@@ -108,6 +97,18 @@ export async function admitPatient(data, userId) {
     room: bed.room,
     createdBy: userId,
   });
+  // Open the first occupancy segment. Bed charges are derived entirely from
+  // these segments, so an admission that never records one is an admission
+  // that can never be billed for its bed.
+  admission.bedStays = [{
+    bed: bed._id,
+    ward: bed.ward,
+    room: bed.room,
+    bedNo: bed.bedNo,
+    dailyCharge: bed.dailyCharge || 0,
+    from: admission.admissionDate,
+    to: null,
+  }];
 
   try {
     await admission.save();
@@ -157,6 +158,21 @@ export async function transferBed(id, newBedId) {
   const newBed = await claimBed(newBedId, adm._id);
 
   try {
+    const movedAt = new Date();
+    // Close the segment being left and open the one being entered, so the
+    // nightly rate that applies to each night of the stay stays reconstructable.
+    const current = adm.bedStays?.find((s) => !s.to);
+    if (current) current.to = movedAt;
+    adm.bedStays.push({
+      bed: newBed._id,
+      ward: newBed.ward,
+      room: newBed.room,
+      bedNo: newBed.bedNo,
+      dailyCharge: newBed.dailyCharge || 0,
+      from: movedAt,
+      to: null,
+    });
+
     adm.bed = newBed._id;
     adm.ward = newBed.ward;
     adm.room = newBed.room;
@@ -172,9 +188,14 @@ export async function transferBed(id, newBedId) {
 }
 
 export async function dischargePatient(id, data) {
+  const dischargeDate = data.dischargeDate || new Date();
   const update = {
     status: 'DISCHARGED',
-    dischargeDate: data.dischargeDate || new Date(),
+    dischargeDate,
+    // Close the occupancy segment in the same write that closes the
+    // admission, so a discharged patient can never be left holding an open
+    // bed stay that would keep accruing nightly charges forever.
+    'bedStays.$[open].to': dischargeDate,
   };
   if (data.dischargeSummary !== undefined) update.dischargeSummary = data.dischargeSummary;
   if (data.icdCode !== undefined) update.icdCode = data.icdCode;
@@ -185,7 +206,7 @@ export async function dischargePatient(id, data) {
   const adm = await IPDAdmission.findOneAndUpdate(
     { _id: id, status: 'ADMITTED' },
     update,
-    { new: true, runValidators: true }
+    { new: true, runValidators: true, arrayFilters: [{ 'open.to': null }] }
   );
   if (!adm) {
     const exists = await IPDAdmission.exists({ _id: id });
@@ -200,11 +221,13 @@ export async function dischargePatient(id, data) {
 // Cancel a mistakenly-created admission — distinct from a discharge, since
 // no care was actually given. Frees the bed just like a discharge does.
 export async function cancelAdmission(id) {
-  // Same atomic close-then-free shape as dischargePatient.
+  // Same atomic close-then-free shape as dischargePatient. A cancelled
+  // admission is never billed, but its occupancy segment is still closed so
+  // no admission is left with a stay that has no end.
   const adm = await IPDAdmission.findOneAndUpdate(
     { _id: id, status: 'ADMITTED' },
-    { status: 'CANCELLED' },
-    { new: true }
+    { status: 'CANCELLED', 'bedStays.$[open].to': new Date() },
+    { new: true, arrayFilters: [{ 'open.to': null }] }
   );
   if (!adm) {
     const exists = await IPDAdmission.exists({ _id: id });

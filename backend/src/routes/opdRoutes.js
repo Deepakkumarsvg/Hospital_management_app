@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import * as controller from '../controllers/opdController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 import { validate } from '../middleware/validate.js';
-import { ROLES } from '../config/roles.js';
 import {
   createOpdVisitSchema,
   updateOpdVisitSchema,
@@ -12,21 +12,19 @@ import {
 } from '../validators/opdValidator.js';
 
 const router = Router();
-router.use(authenticate);
+router.use(authenticate, auditTrail('OPDVisit', { phi: true }));
 
-const CAN_VIEW = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.NURSE, ROLES.RECEPTIONIST];
 // Nurses record vitals; doctors run the consultation. Both can create/update.
-const CAN_EDIT = [ROLES.ADMIN, ROLES.DOCTOR, ROLES.NURSE];
 
-router.post('/allergy-check', authorize(...CAN_EDIT), controller.allergyCheck);
-router.get('/', authorize(...CAN_VIEW), validate(listOpdQuerySchema, 'query'), controller.list);
-router.get('/stats', authorize(...CAN_VIEW), controller.stats);
-router.get('/export', authorize(...CAN_VIEW), validate(exportOpdQuerySchema, 'query'), controller.exportVisits);
-router.get('/:id', authorize(...CAN_VIEW), controller.get);
-router.get('/:id/pdf', authorize(...CAN_VIEW), controller.prescriptionPdf);
+router.post('/allergy-check', requirePermission('opd:edit'), controller.allergyCheck);
+router.get('/', requirePermission('opd:view'), validate(listOpdQuerySchema, 'query'), controller.list);
+router.get('/stats', requirePermission('opd:view'), controller.stats);
+router.get('/export', requirePermission('opd:view'), validate(exportOpdQuerySchema, 'query'), controller.exportVisits);
+router.get('/:id', requirePermission('opd:view'), controller.get);
+router.get('/:id/pdf', requirePermission('opd:view'), controller.prescriptionPdf);
 
-router.post('/', authorize(...CAN_EDIT), validate(createOpdVisitSchema), controller.create);
-router.put('/:id', authorize(...CAN_EDIT), validate(updateOpdVisitSchema), controller.update);
-router.delete('/:id', authorize(ROLES.ADMIN), controller.remove);
+router.post('/', requirePermission('opd:edit'), validate(createOpdVisitSchema), controller.create);
+router.put('/:id', requirePermission('opd:edit'), validate(updateOpdVisitSchema), controller.update);
+router.delete('/:id', requirePermission('opd:delete'), controller.remove);
 
 export default router;

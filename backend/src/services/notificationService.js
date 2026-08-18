@@ -1,14 +1,23 @@
 import { Notification } from '../models/Notification.js';
-import { ROLES } from '../config/roles.js';
 
 // Fire-and-forget creator. Safe to call from anywhere.
 export function notify({ user = null, role = null, type = 'INFO', title, message = '', link = '' }) {
   Notification.create({ user, role, type, title, message, link }).catch(() => {});
 }
 
-// Which notifications a user can see. Admins get oversight of everything.
+// Which notifications a user can see.
+//
+// Admins used to get an unfiltered `{}` — every notification in the hospital,
+// including ones addressed to a specific individual. That is not oversight, it
+// is a bell that never stops ringing and a stream of other people's business:
+// "your lab report is ready" for one named doctor is not an administrator's
+// business, and the volume made the feature useless besides.
+//
+// Everyone, admins included, now sees notifications addressed to them, to their
+// role, or to nobody in particular. Broadcast alerts (low stock, expiries) carry
+// a role rather than a user, so they still reach the people who act on them, and
+// the audit log — not the notification bell — is where oversight lives.
 function scopeFor(user) {
-  if ([ROLES.ADMIN, ROLES.SUPER_ADMIN].includes(user.role)) return {};
   return { $or: [{ user: user._id }, { role: user.role }, { user: null, role: null }] };
 }
 

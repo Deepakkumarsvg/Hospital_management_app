@@ -7,13 +7,17 @@ import jwt from 'jsonwebtoken';
 // caller that forgets it would mint a token that silently fails the check on
 // every request — and the bug would look like "login is broken", not like a
 // missing claim.
-export function signToken(payload) {
+// Access tokens are deliberately short-lived. They cannot be revoked — that is
+// the nature of a stateless JWT — so the window in which a stolen one is useful
+// is kept small, and the long-lived half of the pair is a revocable refresh
+// token instead (see models/Session.js).
+export const ACCESS_TOKEN_TTL = process.env.JWT_EXPIRES_IN || '15m';
+
+export function signToken(payload, { expiresIn = ACCESS_TOKEN_TTL } = {}) {
   if (!payload?.tenant) {
     throw new Error('signToken: a tenant claim is required — pass the resolved tenant slug');
   }
-  return jwt.sign(payload, process.env.JWT_SECRET, {
-    expiresIn: process.env.JWT_EXPIRES_IN || '1d',
-  });
+  return jwt.sign(payload, process.env.JWT_SECRET, { expiresIn });
 }
 
 export const verifyTokenSafe = (token) => {

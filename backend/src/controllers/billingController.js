@@ -3,6 +3,8 @@ import * as service from '../services/billingService.js';
 import { getSettings } from '../services/settingService.js';
 import { generateInvoicePdf } from '../utils/pdf.js';
 import { audit } from '../utils/audit.js';
+// Documents carry paise; audit lines and notifications are read by humans.
+import { toRupees } from '../utils/money.js';
 import { notify } from '../services/notificationService.js';
 import { ROLES } from '../config/roles.js';
 
@@ -25,18 +27,18 @@ export const suggestions = asyncHandler(async (req, res) =>
   sendSuccess(res, { message: 'Suggestions', data: await service.billingSuggestions(req.params.patientId) }));
 export const create = asyncHandler(async (req, res) => {
   const invoice = await service.createInvoice(req.body, req.user?._id);
-  audit(req, { action: 'CREATE', module: 'Invoice', recordId: invoice.invoiceNo, description: `Invoice ${invoice.invoiceNo} · ₹${invoice.grandTotal}` });
-  notify({ role: ROLES.ACCOUNTANT, type: 'BILLING', title: 'New invoice', message: `${invoice.invoiceNo} · ₹${invoice.grandTotal}`, link: '/billing' });
+  audit(req, { action: 'CREATE', module: 'Invoice', recordId: invoice.invoiceNo, description: `Invoice ${invoice.invoiceNo} · ₹${toRupees(invoice.grandTotal)}` });
+  notify({ role: ROLES.ACCOUNTANT, type: 'BILLING', title: 'New invoice', message: `${invoice.invoiceNo} · ₹${toRupees(invoice.grandTotal)}`, link: '/billing' });
   sendSuccess(res, { statusCode: 201, message: 'Invoice created', data: invoice });
 });
 export const update = asyncHandler(async (req, res) => {
   const invoice = await service.updateInvoice(req.params.id, req.body);
-  audit(req, { action: 'UPDATE', module: 'Invoice', recordId: invoice.invoiceNo, description: `Invoice ${invoice.invoiceNo} edited (new total ₹${invoice.grandTotal})` });
+  audit(req, { action: 'UPDATE', module: 'Invoice', recordId: invoice.invoiceNo, description: `Invoice ${invoice.invoiceNo} edited (new total ₹${toRupees(invoice.grandTotal)})` });
   sendSuccess(res, { message: 'Invoice updated', data: invoice });
 });
 export const pay = asyncHandler(async (req, res) => {
   const result = await service.recordPayment(req.params.id, req.body, req.user?._id);
-  audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `₹${result.payment.amount} via ${result.payment.method} on ${result.invoice.invoiceNo}` });
+  audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `₹${toRupees(result.payment.amount)} via ${result.payment.method} on ${result.invoice.invoiceNo}` });
   sendSuccess(res, { statusCode: 201, message: 'Payment recorded', data: result });
 });
 export const cancel = asyncHandler(async (req, res) => {
@@ -46,6 +48,6 @@ export const cancel = asyncHandler(async (req, res) => {
 });
 export const refund = asyncHandler(async (req, res) => {
   const result = await service.refundInvoice(req.params.id, req.body, req.user?._id);
-  audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `Refund ₹${result.payment.amount} on ${result.invoice.invoiceNo}${req.body.reason ? ` (${req.body.reason})` : ''}` });
+  audit(req, { action: 'PAYMENT', module: 'Payment', recordId: result.payment.receiptNo, description: `Refund ₹${toRupees(result.payment.amount)} on ${result.invoice.invoiceNo}${req.body.reason ? ` (${req.body.reason})` : ''}` });
   sendSuccess(res, { statusCode: 201, message: 'Refund recorded', data: result });
 });

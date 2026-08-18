@@ -3,6 +3,7 @@ import { Attendance } from '../models/Attendance.js';
 import { Leave } from '../models/Leave.js';
 import { Payslip } from '../models/Payslip.js';
 import { ApiError } from '../utils/ApiError.js';
+import { toPaise, toRupees } from '../utils/money.js';
 
 // ---------- Employees ----------
 export async function listEmployees({ page = 1, limit = 20, search, department, status } = {}) {
@@ -62,7 +63,8 @@ export async function getEmployee(id) {
     Leave.find({ employee: id }).sort({ createdAt: -1 }).limit(30),
     Payslip.find({ employee: id }).sort({ year: -1, month: -1 }).limit(24),
   ]);
-  const paidTotal = payslips.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.netPay, 0);
+  // netPay is paise; this total is read by the client, so it goes out in rupees.
+  const paidTotal = toRupees(payslips.filter((p) => p.status === 'PAID').reduce((s, p) => s + p.netPay, 0));
   return {
     employee, attendance, leaves, payslips,
     stats: {
@@ -256,15 +258,25 @@ export async function generatePayroll({ month, year }, userId) {
   const summaryByEmployee = Object.fromEntries(summary.map((s) => [String(s.employee.id), s]));
   const daysInMonth = new Date(year, month, 0).getDate();
 
+  // Read every existing payslip for the month up front, in one query.
+  // This used to issue a findOne per employee inside the loop below — a
+  // thousand-person hospital meant a thousand sequential round trips before
+  // the first slip was written.
+  const existingSlips = await Payslip.find({ month, year, employee: { $in: employees.map((e) => e._id) } });
+  const existingByEmployee = new Map(existingSlips.map((p) => [String(p.employee), p]));
+
   const results = [];
   for (const emp of employees) {
-    const existing = await Payslip.findOne({ employee: emp._id, month, year });
+    const existing = existingByEmployee.get(String(emp._id));
     if (existing?.status === 'PAID') { results.push(existing); continue; } // never overwrite a paid slip
 
     const s = summaryByEmployee[String(emp._id)] || { present: 0, absent: 0, halfDays: 0, leaveDays: 0, unmarked: daysInMonth };
-    const perDayRate = daysInMonth ? emp.salary / daysInMonth : 0;
+    // Employee.salary is still rupees; the payslip stores paise. Converting
+    // first means the pro-rata division happens in whole paise and rounds
+    // exactly once, instead of accumulating a fraction of a rupee per day.
+    const basicPaise = toPaise(emp.salary);
     const payableDays = s.present + s.leaveDays + s.halfDays * 0.5;
-    const grossPay = Math.round(perDayRate * payableDays);
+    const grossPay = daysInMonth ? Math.round((basicPaise * payableDays) / daysInMonth) : 0;
     const adjustment = existing?.adjustment || 0;
     const netPay = Math.max(0, grossPay + adjustment);
 
@@ -272,7 +284,7 @@ export async function generatePayroll({ month, year }, userId) {
       { employee: emp._id, month, year },
       {
         $set: {
-          basicSalary: emp.salary, workingDays: daysInMonth,
+          basicSalary: basicPaise, workingDays: daysInMonth,
           presentDays: s.present, absentDays: s.absent, halfDays: s.halfDays, leaveDays: s.leaveDays, unmarkedDays: s.unmarked,
           grossPay, netPay, generatedBy: userId,
         },
@@ -305,9 +317,11 @@ export async function adjustPayslip(id, { adjustment, adjustmentNote }) {
   const p = await Payslip.findById(id);
   if (!p) throw ApiError.notFound('Payslip not found', 'PAYSLIP_NOT_FOUND');
   if (p.status === 'PAID') throw ApiError.badRequest('Cannot adjust a paid payslip', 'PAYSLIP_PAID');
-  p.adjustment = adjustment;
+  // Requests carry rupees; the payslip stores paise. See utils/money.js.
+  const adjustmentPaise = toPaise(adjustment);
+  p.adjustment = adjustmentPaise;
   p.adjustmentNote = adjustmentNote || '';
-  p.netPay = Math.max(0, p.grossPay + adjustment);
+  p.netPay = Math.max(0, p.grossPay + adjustmentPaise);
   await p.save();
   return p.populate(PAYSLIP_POPULATE);
 }
@@ -337,19 +351,22 @@ export async function payrollByDepartment({ month, year }) {
     } },
     { $sort: { net: -1 } },
   ]);
+  // Payslip amounts are paise and aggregation bypasses toJSON — convert here.
   return rows.map((r) => ({
     department: r._id, employees: r.employees,
-    gross: Math.round(r.gross), net: Math.round(r.net), paid: Math.round(r.paid),
+    gross: toRupees(r.gross), net: toRupees(r.net), paid: toRupees(r.paid),
   }));
 }
 
 export async function payslipRowsForExport({ month, year, employee, status } = {}) {
   const { items } = await listPayslips({ page: 1, limit: 100000, month, year, employee, status });
+  // Exports read the documents directly, so paise are converted here.
   return items.map((p) => ({
     'Payslip No': p.payslipNo, Employee: p.employee?.name || '', Code: p.employee?.employeeCode || '',
-    Month: p.month, Year: p.year, 'Basic Salary': p.basicSalary,
+    Month: p.month, Year: p.year, 'Basic Salary': toRupees(p.basicSalary),
     Present: p.presentDays, Absent: p.absentDays, 'Half Days': p.halfDays, Leave: p.leaveDays,
-    'Gross Pay': p.grossPay, Adjustment: p.adjustment, 'Net Pay': p.netPay, Status: p.status,
+    'Gross Pay': toRupees(p.grossPay), Adjustment: toRupees(p.adjustment),
+    'Net Pay': toRupees(p.netPay), Status: p.status,
   }));
 }
 

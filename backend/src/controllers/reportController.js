@@ -3,6 +3,22 @@ import * as service from '../services/reportService.js';
 import { getSettings } from '../services/settingService.js';
 import { generateReportSummaryPdf } from '../utils/pdf.js';
 import { sendCsv, sendExcel } from '../utils/exporters.js';
+import { permissionsFor } from '../middleware/rbac.js';
+import { ROLES } from '../config/roles.js';
+
+// GET /api/reports/dashboard
+//
+// One call for the whole landing page. Guarded by authentication only — the
+// sections inside are individually permission-gated, so every role gets a
+// dashboard made of exactly the parts it may see.
+export const dashboard = asyncHandler(async (req, res) => {
+  const permissions = await permissionsFor(req.user.role);
+  const data = await service.dashboardSummary({
+    permissions,
+    isSuperAdmin: req.user.role === ROLES.SUPER_ADMIN,
+  });
+  sendSuccess(res, { message: 'Dashboard', data });
+});
 
 // GET /api/reports/summary?from=&to=
 export const summary = asyncHandler(async (req, res) => {

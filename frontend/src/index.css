@@ -2,20 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Black & white design system.
-   Light = white surfaces, near-black text, black accent.
-   Dark  = near-black surfaces, white text, white accent. */
+/* Design system driven by CSS variables, so the same class names flip cleanly
+   between themes.
+
+   Light = cool white surfaces, clinical blue accent.
+   Dark  = near-black surfaces, white text, the same accent lifted to carry.
+
+   The light palette is tinted rather than neutral grey: every surface carries a
+   trace of the accent hue, which is what keeps a mostly-white admin screen from
+   reading as unfinished. Contrast is checked against WCAG AA — the tightest
+   pair is muted text on the page background, at 5.2:1. */
 @layer base {
   :root,
   .light {
-    --bg: 230 230 233;
-    --surface: 244 244 246;
+    --bg: 240 244 249;
+    --surface: 247 250 253;
     --elevated: 255 255 255;
-    --border: 200 200 206;
-    --fg: 0 0 0;
-    --muted: 82 82 88;
-    --accent: 0 0 0;
+    /* Deliberately soft — the same weight as the greyscale border it replaces,
+       so surfaces are separated by fill rather than by hard outlines. */
+    --border: 203 213 227;
+    --fg: 15 23 36;
+    --muted: 90 103 120;
+    --accent: 21 101 192;
     --accent-fg: 255 255 255;
+    /* Focus indicators carry the non-text contrast requirement, so the ring is
+       the accent itself rather than a washed-out tint of the text colour:
+       5.8:1 on a white field, 5.2:1 on the page. */
+    --ring: 21 101 192;
   }
 
   .dark {
@@ -25,8 +38,12 @@
     --border: 48 48 48;
     --fg: 245 245 245;
     --muted: 160 160 160;
-    --accent: 245 245 245;
+    /* The same blue as light, lifted so it carries on a near-black surface:
+       6.4:1 on a card, and 7.8:1 for the near-black text that sits on it. A
+       brand colour that only exists in one theme isn't a brand colour. */
+    --accent: 96 165 250;
     --accent-fg: 10 10 10;
+    --ring: 96 165 250;
   }
 
   /* Tells the browser to render native controls (select popups, scrollbars,
@@ -102,7 +119,7 @@
   .btn {
     @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium
            transition-colors disabled:opacity-50 disabled:pointer-events-none focus:outline-none
-           focus-visible:ring-2 focus-visible:ring-fg/40;
+           focus-visible:ring-2 focus-visible:ring-ring/60;
   }
   .btn-primary {
     @apply btn bg-accent text-accent-fg hover:opacity-90;
@@ -115,7 +132,7 @@
   }
   .input {
     @apply w-full rounded-lg border border-border bg-elevated px-3 py-2 text-sm text-fg
-           placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-fg/30;
+           placeholder:text-muted focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/35;
   }
   .card {
     @apply rounded-xl border border-border bg-elevated shadow-sm shadow-black/[0.03] dark:shadow-none;

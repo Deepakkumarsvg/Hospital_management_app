@@ -1,5 +1,7 @@
 import PDFDocument from 'pdfkit';
 import { getObjectBuffer } from '../config/storage.js';
+import { toRupees } from './money.js';
+import { STATE_CODES } from '../config/gst.js';
 
 // Shared black & white document styling — mirrors the app's monochrome theme.
 const INK = '#111111';
@@ -9,6 +11,16 @@ const LINE = '#cccccc';
 function money(settings, n) {
   const cur = settings?.currency || '₹';
   return `${cur}${Number(n || 0).toFixed(2)}`;
+}
+
+// Invoices, payments and payslips store money as integer paise (see
+// utils/money.js). PDFs render the raw Mongoose documents rather than their
+// JSON form, so they never see the schema's paise-to-rupees transform and have
+// to convert here. Everything else on these pages — dispenses, purchase
+// orders, ambulance charges, report summaries — is already in rupees and keeps
+// using money() above.
+function moneyP(settings, paise) {
+  return money(settings, toRupees(paise));
 }
 
 function fmtDate(d) {
@@ -114,42 +126,79 @@ export async function generateInvoicePdf(res, { invoice, payments = [], settings
     ['UHID', p.uhid],
     ['Phone', p.phone],
     ['Status', invoice.status],
+    // Only on a B2B bill — an individual patient has no GSTIN, and a blank row
+    // labelled "GSTIN" on every walk-in receipt is noise.
+    ...(invoice.customerGstin ? [['Customer GSTIN', invoice.customerGstin]] : []),
+    // Place of supply is what decides CGST/SGST vs IGST, so a tax invoice has
+    // to state it.
+    ...(invoice.placeOfSupply
+      ? [['Place of Supply', `${invoice.placeOfSupply} — ${STATE_CODES[invoice.placeOfSupply] || 'Unknown'}`]]
+      : []),
   ], y);
 
   // Items table.
+  //
+  // HSN/SAC and the GST rate are columns of their own because a tax invoice is
+  // required to show them per line — a single tax figure at the bottom does not
+  // make a document a tax invoice.
   y += 6;
-  const cols = { desc: 50, qty: 330, rate: 390, amt: 470 };
-  doc.fontSize(9).font('Helvetica-Bold').fillColor(INK);
+  const cols = { desc: 50, hsn: 265, qty: 320, rate: 360, gst: 415, amt: 470 };
+  doc.fontSize(8).font('Helvetica-Bold').fillColor(INK);
   doc.text('Description', cols.desc, y);
-  doc.text('Qty', cols.qty, y, { width: 40, align: 'right' });
-  doc.text('Rate', cols.rate, y, { width: 60, align: 'right' });
+  doc.text('HSN/SAC', cols.hsn, y, { width: 50 });
+  doc.text('Qty', cols.qty, y, { width: 32, align: 'right' });
+  doc.text('Rate', cols.rate, y, { width: 48, align: 'right' });
+  doc.text('GST', cols.gst, y, { width: 48, align: 'right' });
   doc.text('Amount', cols.amt, y, { width: 75, align: 'right' });
   y += 14;
   doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
   y += 6;
 
-  doc.font('Helvetica').fillColor(INK);
+  doc.font('Helvetica').fontSize(8).fillColor(INK);
   (invoice.items || []).forEach((it) => {
     if (y > 720) { doc.addPage(); y = 60; }
     const label = it.category && it.category !== 'OTHER' ? `${it.description}  (${it.category})` : it.description;
-    doc.text(label, cols.desc, y, { width: 270 });
-    doc.text(String(it.quantity), cols.qty, y, { width: 40, align: 'right' });
-    doc.text(money(settings, it.unitPrice), cols.rate, y, { width: 60, align: 'right' });
-    doc.text(money(settings, it.amount), cols.amt, y, { width: 75, align: 'right' });
-    y += Math.max(16, doc.heightOfString(label, { width: 270 }));
+    // "Exempt" is a meaningful statement on a bill, not a blank — it tells the
+    // patient (and an auditor) that no tax was due, rather than that somebody
+    // forgot to charge it.
+    const gstLabel = it.taxTreatment === 'TAXABLE'
+      ? `${it.taxRatePercent}%`
+      : (it.taxTreatment === 'NIL_RATED' ? 'Nil' : 'Exempt');
+
+    doc.text(label, cols.desc, y, { width: 210 });
+    doc.text(it.hsnSac || '—', cols.hsn, y, { width: 50 });
+    doc.text(String(it.quantity), cols.qty, y, { width: 32, align: 'right' });
+    doc.text(moneyP(settings, it.unitPrice), cols.rate, y, { width: 48, align: 'right' });
+    doc.text(gstLabel, cols.gst, y, { width: 48, align: 'right' });
+    doc.text(moneyP(settings, it.amount), cols.amt, y, { width: 75, align: 'right' });
+    y += Math.max(16, doc.heightOfString(label, { width: 210 }));
   });
 
   doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
   y += 8;
 
   // Totals block (right aligned).
+  //
+  // The tax heads are shown separately, and only the ones that actually apply:
+  // an intra-state bill has CGST and SGST, an inter-state one has IGST, and
+  // showing all three with zeroes would just invite the reader to add them up
+  // wrongly.
+  const taxLines = invoice.isInterState
+    ? [['IGST', invoice.totalIgst]]
+    : [['CGST', invoice.totalCgst], ['SGST', invoice.totalSgst]];
+
   const totals = [
-    ['Subtotal', money(settings, invoice.subtotal)],
-    ...(invoice.discount ? [['Discount', `- ${money(settings, invoice.discount)}`]] : []),
-    ...(invoice.tax ? [[`Tax (${invoice.taxPercent}%)`, money(settings, invoice.tax)]] : []),
-    ['Grand Total', money(settings, invoice.grandTotal)],
-    ['Paid', money(settings, invoice.paidAmount)],
-    ['Due', money(settings, invoice.dueAmount)],
+    ['Subtotal', moneyP(settings, invoice.subtotal)],
+    ...(invoice.discount ? [['Discount', `- ${moneyP(settings, invoice.discount)}`]] : []),
+    ...(invoice.exemptValue ? [['Exempt value', moneyP(settings, invoice.exemptValue)]] : []),
+    ...(invoice.taxableValue ? [['Taxable value', moneyP(settings, invoice.taxableValue)]] : []),
+    ...taxLines.filter(([, v]) => v > 0).map(([k, v]) => [k, moneyP(settings, v)]),
+    // A bill raised before per-line tax existed has a whole-invoice rate and
+    // none of the breakdown above.
+    ...(invoice.tax && !invoice.taxableValue ? [[`Tax (${invoice.taxPercent}%)`, moneyP(settings, invoice.tax)]] : []),
+    ['Grand Total', moneyP(settings, invoice.grandTotal)],
+    ['Paid', moneyP(settings, invoice.paidAmount)],
+    ['Due', moneyP(settings, invoice.dueAmount)],
   ];
   totals.forEach(([k, v]) => {
     const bold = k === 'Grand Total' || k === 'Due';
@@ -168,7 +217,7 @@ export async function generateInvoicePdf(res, { invoice, payments = [], settings
     payments.forEach((pay) => {
       if (y > 760) { doc.addPage(); y = 60; }
       const isRefund = pay.type === 'REFUND';
-      const amt = `${isRefund ? '− ' : ''}${money(settings, pay.amount)}`;
+      const amt = `${isRefund ? '− ' : ''}${moneyP(settings, pay.amount)}`;
       doc.fillColor(isRefund ? '#b91c1c' : MUTED);
       doc.text(`${fmtDate(pay.createdAt)}  ·  ${pay.receiptNo || ''}  ·  ${isRefund ? 'REFUND' : pay.method}  ·  ${amt}`, 50, y);
       y += 13;
@@ -668,11 +717,11 @@ export async function generatePayslipPdf(res, { payslip, settings }) {
 
   y += 6;
   const rows = [
-    ['Basic Salary', money(settings, payslip.basicSalary)],
+    ['Basic Salary', moneyP(settings, payslip.basicSalary)],
     ['Half Days', String(payslip.halfDays)],
     ['Leave Days (paid)', String(payslip.leaveDays)],
-    ['Gross Pay', money(settings, payslip.grossPay)],
-    [payslip.adjustment >= 0 ? 'Adjustment (+)' : 'Adjustment (-)', money(settings, Math.abs(payslip.adjustment))],
+    ['Gross Pay', moneyP(settings, payslip.grossPay)],
+    [payslip.adjustment >= 0 ? 'Adjustment (+)' : 'Adjustment (-)', moneyP(settings, Math.abs(payslip.adjustment))],
   ];
   doc.fontSize(9).font('Helvetica');
   rows.forEach(([k, v]) => {
@@ -689,7 +738,7 @@ export async function generatePayslipPdf(res, { payslip, settings }) {
   doc.moveTo(50, y).lineTo(545, y).strokeColor(LINE).stroke();
   y += 12;
   doc.fontSize(12).font('Helvetica-Bold').fillColor(INK).text('Net Pay', 50, y);
-  doc.text(money(settings, payslip.netPay), 400, y, { width: 145, align: 'right' });
+  doc.text(moneyP(settings, payslip.netPay), 400, y, { width: 145, align: 'right' });
   y += 24;
 
   doc.fontSize(8).font('Helvetica').fillColor(MUTED)

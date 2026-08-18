@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import * as userController from '../controllers/userController.js';
 import { authenticate } from '../middleware/auth.js';
-import { authorize } from '../middleware/rbac.js';
+import { requirePermission } from '../middleware/rbac.js';
+import { auditTrail } from '../middleware/auditTrail.js';
 import { validate } from '../middleware/validate.js';
-import { ROLES } from '../config/roles.js';
 import {
   createUserSchema,
   updateUserSchema,
@@ -13,7 +13,7 @@ import {
 const router = Router();
 
 // All user-management routes require an authenticated admin.
-router.use(authenticate, authorize(ROLES.ADMIN));
+router.use(authenticate, requirePermission('users:manage'), auditTrail('User'));
 
 router.get('/', validate(listUsersQuerySchema, 'query'), userController.listUsers);
 router.get('/roles', userController.listRoles);
