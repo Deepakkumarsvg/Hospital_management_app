@@ -205,7 +205,12 @@ async function settleStatus(id) {
 // Refuses while money is still held: an advance with a balance left is the
 // patient's money, and closing the record would be the system quietly keeping
 // it. Refund it first, or apply it to the final bill.
-export async function close(id, userId) {
+// `_userId` is accepted for symmetry with collect/topUp/refund, which all
+// record `by: userId` on a movement. Closing records no movement yet, so it
+// is deliberately unused rather than dropped: the controller already passes
+// it, and a Deposit has no closedBy field to put it in. Add one and this
+// becomes a real audit of who closed the deposit.
+export async function close(id, _userId) {
   const deposit = await Deposit.findById(id);
   if (!deposit) throw ApiError.notFound('Deposit not found', 'DEPOSIT_NOT_FOUND');
   if (deposit.status === 'CLOSED') throw ApiError.badRequest('This deposit is already closed', 'DEPOSIT_CLOSED');

@@ -11,13 +11,39 @@
 // deployment and keeps local development dependency-free. What is not
 // acceptable is running several instances *without* it, so that combination is
 // called out loudly at boot.
-import { createClient } from 'redis';
-import RedisStore from 'rate-limit-redis';
+// Loaded only when there is a REDIS_URL to use them with.
+//
+// These used to be plain top-level imports, which quietly contradicted every
+// word above: the module announced itself as optional while making two
+// packages mandatory to even LOAD. Both were also missing from package.json,
+// so they existed on developer machines and nowhere else — the app booted
+// locally and died on `npm ci` with "Cannot find package 'redis'", which is
+// how it reached production.
+//
+// They are declared dependencies now, so a configured deployment gets them.
+// The guard stays because the contract is worth enforcing rather than
+// documenting: a deployment with no Redis must not need Redis installed, and
+// a rate-limit backend must never be the reason a hospital cannot start.
+let createClient = null;
+let RedisStore = null;
+
+export const isRedisConfigured = () => Boolean(process.env.REDIS_URL);
+
+if (isRedisConfigured()) {
+  try {
+    ({ createClient } = await import('redis'));
+    ({ default: RedisStore } = await import('rate-limit-redis'));
+  } catch (err) {
+    console.warn(
+      `⚠ REDIS_URL is set but the redis packages are missing (${err.message}).
+`
+      + '  Falling back to per-process rate limiting. Run \u0027npm install\u0027 in backend/.'
+    );
+  }
+}
 
 let client = null;
 let connecting = null;
-
-export const isRedisConfigured = () => Boolean(process.env.REDIS_URL);
 
 async function connect() {
   if (client) return client;
@@ -36,7 +62,7 @@ async function connect() {
 
 // A store for express-rate-limit, or undefined to use its in-memory default.
 export function rateLimitStore(prefix) {
-  if (!isRedisConfigured()) return undefined;
+  if (!isRedisConfigured() || !RedisStore) return undefined;
 
   return new RedisStore({
     prefix: `rl:${prefix}:`,
@@ -48,7 +74,7 @@ export function rateLimitStore(prefix) {
 
 // Warn once at boot if the combination is unsafe.
 export function checkRateLimitBacking() {
-  if (isRedisConfigured()) {
+  if (isRedisConfigured() && RedisStore) {
     console.log('✓ Rate limiting backed by Redis (shared across instances)');
     return;
   }
